@@ -1,12 +1,12 @@
 import { useFrame } from '@react-three/fiber'
-import { MathUtils } from 'three'
-import { CAT_RADIUS, MAX_SPEED, NEAR_DISTANCE, WALK_RADIUS } from '../config.js'
+import { MathUtils } from 'three/webgpu'
+import { CAT_RADIUS, MAX_SPEED, NEAR_DISTANCE, WALK } from '../config.js'
 import { colliders, portals, toLocal } from '../layout.js'
 import { enterPortal } from '../portal-nav.js'
 import { input, player, uiStore } from '../store.js'
 
 // Reads the keys / joystick / click-to-walk path, moves the cat, keeps it on
-// the plaza and out of trees, and notices when it walks into a portal.
+// the roof and out of the furniture, and notices when it walks into a portal.
 export default function Controller() {
   useFrame((_, dt) => {
     dt = Math.min(dt, 0.05)
@@ -74,12 +74,13 @@ export default function Controller() {
         nz = cz + (dz / d) * min
       }
     }
-    // Stay on the island
-    const r = Math.hypot(nx, nz)
-    if (r > WALK_RADIUS) {
-      nx *= WALK_RADIUS / r
-      nz *= WALK_RADIUS / r
-      player.path = []
+    // Stay on the roof
+    const cx = Math.min(WALK.x, Math.max(-WALK.x, nx))
+    const cz = Math.min(WALK.front, Math.max(WALK.back, nz))
+    if (cx !== nx || cz !== nz) {
+      nx = cx
+      nz = cz
+      if (player.path.length === 1) player.path = []
     }
     pos.x = nx
     pos.z = nz

@@ -1,22 +1,32 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { PCFShadowMap } from 'three'
+import { ACESFilmicToneMapping, PCFShadowMap, WebGPURenderer } from 'three/webgpu'
 import Experience from './Experience.jsx'
 import { uiStore } from '../store.js'
+import { QUALITY } from '../quality.js'
 
-const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
+// WebGPU first. Browsers without it get the same renderer on its WebGL 2
+// backend, so every material and effect (all TSL) still works.
+async function createRenderer(props) {
+  const renderer = new WebGPURenderer({ ...props, antialias: true, powerPreference: 'high-performance' })
+  await renderer.init()
+  renderer.toneMapping = ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.05
+  if (import.meta.env.DEV) console.info('[portal] backend:', renderer.backend.isWebGPUBackend ? 'WebGPU' : 'WebGL 2')
+  return renderer
+}
 
 export default function Stage() {
   return (
     <Canvas
       className="stage"
-      flat // no tone mapping: toon colours stay as picked
-      shadows={{ type: PCFShadowMap }}
-      dpr={coarse ? [1, 1.5] : [1, 2]}
-      camera={{ fov: 45, near: 0.1, far: 300, position: [0, 16, 24] }}
-      gl={{ antialias: true, powerPreference: 'high-performance' }}
+      gl={createRenderer}
+      shadows={QUALITY.shadows ? { type: PCFShadowMap } : false}
+      dpr={QUALITY.dpr}
+      camera={{ fov: 45, near: 0.1, far: 400, position: [0, 14, 22] }}
       onCreated={({ gl }) => {
         gl.domElement.addEventListener('webglcontextlost', () => uiStore.set({ failed: true }))
+        gl.backend?.device?.lost?.then(() => uiStore.set({ failed: true }))
       }}
     >
       <Suspense fallback={null}>

@@ -1,83 +1,32 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import {
-  AdditiveBlending,
-  BufferAttribute,
-  BufferGeometry,
-  Color,
-  DoubleSide,
-  MathUtils,
-  ShaderMaterial,
-} from 'three'
+import { AdditiveBlending, Color, DoubleSide, MathUtils, MeshBasicMaterial, MeshBasicNodeMaterial, PlaneGeometry } from 'three/webgpu'
+import { Fn, Loop, color, cos, float, fract, max, mix, pow, select, sin, smoothstep, time, uniform, uv, vec2, vec3 } from 'three/tsl'
 import { walkToPortal } from '../portal-nav.js'
 import { player, uiStore } from '../store.js'
-import { canvasTexture, roundRect } from './canvasTexture.js'
-import { OUTLINE, TOON_RAMP } from './toon.js'
+import { MONO, SANS, canvasTexture } from './canvasTexture.js'
 
-const RING = 1.45
-const CENTER_Y = 1.72
+const hdr = (hex, k) => new Color(hex).multiplyScalar(k)
 
-const swirlVertex = /* glsl */ `
-  varying vec2 vUv;
-  void main() {
-    vUv = uv;
-    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  }`
-const swirlFragment = /* glsl */ `
-  uniform float uTime;
-  uniform float uBoost;
-  uniform vec3 uColor;
-  varying vec2 vUv;
-  void main() {
-    vec2 p = vUv - 0.5;
-    float r = length(p) * 2.0;
-    float a = atan(p.y, p.x);
-    float t = uTime * (1.6 + uBoost * 2.0);
-    float arms = sin(a * 3.0 + r * 9.0 - t * 2.0) * 0.5 + 0.5;
-    float fine = sin(a * 7.0 - r * 16.0 + t * 1.3) * 0.5 + 0.5;
-    float core = pow(1.0 - r, 3.0);
-    vec3 deep = uColor * 0.28;
-    vec3 col = mix(deep, uColor * 1.15, arms * 0.75 + fine * 0.25);
-    col = mix(col, vec3(1.0), core * (0.7 + uBoost * 0.3));
-    col += uColor * smoothstep(0.75, 1.0, r) * 0.6; // bright rim
-    float alpha = smoothstep(1.0, 0.94, r);
-    gl_FragColor = vec4(col, alpha);
-    #include <colorspace_fragment>
-  }`
-
+// Shared wrapper: placement, click-to-walk, the coloured light, the streak of
+// reflected light on the wet floor and the vertical neon sign beside it. The
+// opening itself is DevGate or Aperture.
 export default function Portal({ p }) {
   const gl = useThree((s) => s.gl)
-  const boost = useRef(0)
-  const ring = useRef()
+  const boost = useRef(0) // 0 idle .. 1 cat is near .. 2 stepping through
   const light = useRef()
-  const pad = useRef()
-  const label = useRef()
-
-  const swirl = useMemo(
-    () =>
-      new ShaderMaterial({
-        transparent: true,
-        depthWrite: false,
-        side: DoubleSide,
-        uniforms: { uTime: { value: 0 }, uBoost: { value: 0 }, uColor: { value: new Color(p.color) } },
-        vertexShader: swirlVertex,
-        fragmentShader: swirlFragment,
-      }),
-    [p.color],
-  )
+  const streak = useRef()
+  const side = p.x < 0 ? -1 : 1 // the sign goes on the outer side
 
   useFrame((state, dt) => {
-    const t = state.clock.elapsedTime
     const ui = uiStore.get()
-    const focus = ui.near?.id === p.id || ui.leaving?.id === p.id
-    boost.current = MathUtils.damp(boost.current, focus ? 1 : 0, 4, dt)
+    const leaving = player.leaving >= 0 && ui.leaving?.id === p.id
+    const target = leaving ? 2 : ui.near?.id === p.id ? 1 : 0
+    boost.current = MathUtils.damp(boost.current, target, leaving ? 3 : 4, dt)
     const b = boost.current
-    swirl.uniforms.uTime.value = t
-    swirl.uniforms.uBoost.value = b
-    ring.current.scale.setScalar(1 + b * 0.04 + Math.sin(t * 2) * 0.01)
-    light.current.intensity = 6 + b * 10 + (player.leaving >= 0 && ui.leaving?.id === p.id ? 30 : 0)
-    pad.current.material.opacity = 0.35 + b * 0.35 + Math.sin(t * 3) * 0.05
-    label.current.position.y = 3.85 + Math.sin(t * 1.4 + p.x) * 0.06
+    const flicker = Math.sin(state.clock.elapsedTime * 31 + p.x) > 0.985 ? 0.6 : 1
+    light.current.intensity = (9 + b * 14) * flicker
+    streak.current.material.opacity = (0.35 + b * 0.3) * flicker
   })
 
   const onClick = (e) => {
@@ -91,269 +40,309 @@ export default function Portal({ p }) {
   }
 
   return (
-    // Anything that belongs to the portal (ring, swirl, sign, floating bits) is clickable
     <group position={[p.x, 0, p.z]} rotation-y={p.yaw} onClick={onClick} onPointerOver={hover(true)} onPointerOut={hover(false)}>
-      <group ref={ring} position-y={CENTER_Y}>
-        <mesh material={swirl}>
-          <circleGeometry args={[RING - 0.08, 64]} />
-        </mesh>
-        <mesh castShadow>
-          <torusGeometry args={[RING, 0.17, 14, 64]} />
-          <meshToonMaterial color={p.frame} gradientMap={TOON_RAMP} />
-        </mesh>
-        <mesh material={OUTLINE}>
-          <torusGeometry args={[RING, 0.21, 10, 64]} />
-        </mesh>
-        <Studs color={p.color} />
-      </group>
-
-      {/* Feet */}
-      {[-1, 1].map((s) => (
-        <mesh key={s} position={[s * 1.45, 0.2, 0]} castShadow>
-          <boxGeometry args={[0.55, 0.4, 0.7]} />
-          <meshToonMaterial color="#cbb79a" gradientMap={TOON_RAMP} />
-        </mesh>
-      ))}
-
-      {/* Glowing pad on the ground */}
-      <mesh ref={pad} rotation-x={-Math.PI / 2} position-y={0.02}>
-        <ringGeometry args={[1.3, 2.0, 48]} />
-        <meshBasicMaterial color={p.color} transparent opacity={0.4} depthWrite={false} blending={AdditiveBlending} />
-      </mesh>
-
-      <pointLight ref={light} color={p.color} intensity={6} distance={8} decay={1.6} position={[0, CENTER_Y, 0.8]} />
-      <Sparks color={p.color} />
-      <group ref={label}>
-        <Label p={p} />
-      </group>
-      {p.id === 'dev' ? <CodeBits color={p.color} /> : <PhotoFrames />}
+      {p.id === 'dev' ? <DevGate p={p} boost={boost} /> : <Aperture p={p} boost={boost} />}
+      <pointLight ref={light} color={p.color} intensity={9} distance={11} decay={1.5} position={[0, 1.8, 1.2]} />
+      <FloorStreak ref={streak} color={p.color} />
+      <NeonSign p={p} position={[side * 2.45, 0, -0.2]} />
     </group>
   )
 }
 
-function Studs({ color }) {
-  return Array.from({ length: 10 }, (_, i) => {
-    const a = (i / 10) * Math.PI * 2
-    return (
-      <mesh key={i} position={[Math.cos(a) * RING, Math.sin(a) * RING, 0.17]}>
-        <sphereGeometry args={[0.055, 8, 6]} />
-        <meshBasicMaterial color={color} toneMapped={false} />
-      </mesh>
-    )
+// Light smeared across wet concrete towards the viewer
+const streakTexture = () =>
+  canvasTexture(128, 256, (ctx, w, h) => {
+    const g = ctx.createRadialGradient(w / 2, h * 0.25, 0, w / 2, h * 0.25, h * 0.75)
+    g.addColorStop(0, 'rgba(255,255,255,1)')
+    g.addColorStop(0.3, 'rgba(255,255,255,0.35)')
+    g.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, w, h)
   })
+function FloorStreak({ color, ref }) {
+  const tex = useMemo(streakTexture, [])
+  return (
+    <mesh ref={ref} rotation-x={-Math.PI / 2} position={[0, 0.012, 1.6]}>
+      <planeGeometry args={[2.6, 4.4]} />
+      <meshBasicMaterial map={tex} color={hdr(color, 1.4)} transparent opacity={0.4} depthWrite={false} blending={AdditiveBlending} toneMapped={false} />
+    </mesh>
+  )
 }
 
-function Label({ p }) {
+function NeonSign({ p, ...props }) {
   const tex = useMemo(
     () =>
-      canvasTexture(640, 220, (ctx, w, h) => {
-        ctx.fillStyle = '#fff8e6'
-        roundRect(ctx, 8, 8, w - 16, h - 16, 40)
-        ctx.fill()
-        ctx.lineWidth = 10
-        ctx.strokeStyle = '#3a2412'
-        ctx.stroke()
+      canvasTexture(180, 640, (ctx, w, h) => {
+        ctx.fillStyle = '#0d0f17'
+        ctx.fillRect(0, 0, w, h)
+        ctx.strokeStyle = p.color
+        ctx.lineWidth = 6
+        ctx.shadowColor = p.color
+        ctx.shadowBlur = 18
+        ctx.strokeRect(14, 14, w - 28, h - 28)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `900 120px ${SANS}`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ctx.fillStyle = '#3a2412'
-        ctx.font = '92px "Lilita One", "Arial Black", sans-serif'
-        ctx.fillText(p.title, w / 2, h / 2 - 18)
-        ctx.fillStyle = p.frame
-        ctx.font = '800 40px Nunito, "Trebuchet MS", sans-serif'
-        ctx.fillText(new URL(p.url).host.replace(/^www\./, ''), w / 2, h / 2 + 56)
+        ;[...p.jp].forEach((c, i) => ctx.fillText(c, w / 2, 120 + i * 150))
+        ctx.save()
+        ctx.translate(w / 2, 470)
+        ctx.rotate(Math.PI / 2)
+        ctx.font = `700 34px ${SANS}`
+        ctx.fillStyle = p.color
+        ctx.shadowBlur = 10
+        ctx.fillText(p.title, 0, 0)
+        ctx.restore()
       }),
     [p],
   )
   return (
-    <mesh>
-      <planeGeometry args={[2.6, 0.89]} />
-      <meshBasicMaterial map={tex} transparent toneMapped={false} side={DoubleSide} />
-    </mesh>
-  )
-}
-
-// Motes drifting up through the ring
-function Sparks({ color, count = 48 }) {
-  const { geometry, seeds } = useMemo(() => {
-    const g = new BufferGeometry()
-    g.setAttribute('position', new BufferAttribute(new Float32Array(count * 3), 3))
-    const seeds = Array.from({ length: count }, () => [Math.random(), Math.random(), Math.random()])
-    return { geometry: g, seeds }
-  }, [count])
-  const dot = useMemo(
-    () =>
-      canvasTexture(64, 64, (ctx) => {
-        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32)
-        grad.addColorStop(0, 'rgba(255,255,255,1)')
-        grad.addColorStop(1, 'rgba(255,255,255,0)')
-        ctx.fillStyle = grad
-        ctx.fillRect(0, 0, 64, 64)
-      }),
-    [],
-  )
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    const pos = geometry.attributes.position
-    for (let i = 0; i < count; i++) {
-      const [a, b, c] = seeds[i]
-      const life = (t * (0.25 + c * 0.25) + a) % 1
-      const ang = a * Math.PI * 2 + t * 0.3
-      const r = 0.5 + b * 1.4
-      pos.setXYZ(i, Math.cos(ang) * r, 0.1 + life * 3.6, Math.sin(ang) * r * 0.5)
-    }
-    pos.needsUpdate = true
-  })
-  return (
-    <points geometry={geometry} frustumCulled={false}>
-      <pointsMaterial
-        color={color}
-        map={dot}
-        size={0.16}
-        transparent
-        depthWrite={false}
-        blending={AdditiveBlending}
-        toneMapped={false}
-      />
-    </points>
-  )
-}
-
-// Floating code blocks round the engineering portal
-function CodeBits({ color }) {
-  const glyphs = ['</>', '{ }', '$_', 'λ', '01', 'db']
-  const spots = [
-    [-2.4, 2.6, -0.4],
-    [-2.0, 1.2, 0.2],
-    [2.3, 2.9, -0.3],
-    [2.1, 1.4, 0.3],
-    [-0.9, 4.6, -0.5],
-    [1.1, 4.7, -0.4],
-  ]
-  const textures = useMemo(
-    () =>
-      glyphs.map((g) =>
-        canvasTexture(128, 128, (ctx, w, h) => {
-          ctx.fillStyle = '#14233a'
-          ctx.fillRect(0, 0, w, h)
-          ctx.strokeStyle = color
-          ctx.lineWidth = 6
-          ctx.strokeRect(6, 6, w - 12, h - 12)
-          ctx.fillStyle = color
-          ctx.font = '800 52px ui-monospace, Menlo, monospace'
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'middle'
-          ctx.fillText(g, w / 2, h / 2 + 2)
-        }),
-      ),
-    [color],
-  )
-  const refs = useRef([])
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    refs.current.forEach((m, i) => {
-      if (!m) return
-      m.position.y = spots[i][1] + Math.sin(t * 1.2 + i * 1.3) * 0.15
-      m.rotation.y = t * 0.5 + i
-      m.rotation.x = Math.sin(t * 0.7 + i) * 0.3
-    })
-  })
-  return spots.map((s, i) => (
-    <mesh key={i} ref={(m) => (refs.current[i] = m)} position={s} castShadow>
-      <boxGeometry args={[0.42, 0.42, 0.42]} />
-      <meshBasicMaterial map={textures[i]} toneMapped={false} />
-    </mesh>
-  ))
-}
-
-// Floating prints round the photography portal: little made-up "photos"
-// (sunset, blue hour, neon street, sea, sakura) in white borders
-function PhotoFrames() {
-  const shots = [
-    ['#ff9a5a', '#ffd38a', '#3a2a4a', 'sun'],
-    ['#1d2b5a', '#5a7bd0', '#0f1630', 'city'],
-    ['#2a1240', '#ff4fa3', '#120818', 'neon'],
-    ['#7fd3e8', '#e8f6ff', '#2f7e96', 'sea'],
-    ['#ffd1dc', '#fff2f5', '#8a5a64', 'bloom'],
-  ]
-  const spots = [
-    [-2.5, 2.7, -0.3, 0.25],
-    [-2.1, 1.3, 0.3, -0.15],
-    [2.4, 2.9, -0.2, -0.3],
-    [2.2, 1.4, 0.3, 0.2],
-    [0, 4.75, -0.5, 0.05],
-  ]
-  const textures = useMemo(
-    () =>
-      shots.map(([a, b, ground, kind]) =>
-        canvasTexture(200, 150, (ctx, w, h) => {
-          ctx.fillStyle = '#fbfaf6'
-          ctx.fillRect(0, 0, w, h)
-          const x = 10
-          const y = 10
-          const iw = w - 20
-          const ih = h - 34
-          const g = ctx.createLinearGradient(0, y, 0, y + ih)
-          g.addColorStop(0, a)
-          g.addColorStop(1, b)
-          ctx.fillStyle = g
-          ctx.fillRect(x, y, iw, ih)
-          ctx.fillStyle = ground
-          if (kind === 'sun' || kind === 'sea') {
-            ctx.beginPath()
-            ctx.arc(x + iw * 0.62, y + ih * 0.62, 16, 0, Math.PI * 2)
-            ctx.fillStyle = kind === 'sun' ? '#fff3c4' : '#ffffff'
-            ctx.fill()
-            ctx.fillStyle = ground
-            ctx.fillRect(x, y + ih * 0.7, iw, ih * 0.3)
-          } else if (kind === 'city' || kind === 'neon') {
-            let cx = x
-            let i = 0
-            while (cx < x + iw) {
-              const bw = 12 + ((i * 37) % 18)
-              const bh = 25 + ((i * 53) % 50)
-              ctx.fillStyle = ground
-              ctx.fillRect(cx, y + ih - bh, bw - 2, bh)
-              if (kind === 'neon') {
-                ctx.fillStyle = i % 2 ? '#4ff0ff' : '#ffd84a'
-                ctx.fillRect(cx + 3, y + ih - bh + 6, 4, 4)
-              }
-              cx += bw
-              i++
-            }
-          } else {
-            for (let i = 0; i < 18; i++) {
-              ctx.fillStyle = i % 2 ? '#ff9fb6' : '#ffc4d2'
-              ctx.beginPath()
-              ctx.arc(x + ((i * 47) % iw), y + ((i * 29) % ih), 7, 0, Math.PI * 2)
-              ctx.fill()
-            }
-          }
-        }),
-      ),
-    [],
-  )
-  const refs = useRef([])
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    refs.current.forEach((m, i) => {
-      if (!m) return
-      m.position.y = spots[i][1] + Math.sin(t * 1.1 + i * 1.7) * 0.14
-      m.rotation.z = spots[i][3] + Math.sin(t * 0.8 + i) * 0.06
-      m.rotation.y = Math.sin(t * 0.5 + i * 2) * 0.35
-    })
-  })
-  return spots.map(([x, y, z], i) => (
-    <group key={i} ref={(m) => (refs.current[i] = m)} position={[x, y, z]}>
-      <mesh castShadow>
-        <boxGeometry args={[0.84, 0.64, 0.03]} />
-        <meshToonMaterial color="#fbfaf6" gradientMap={TOON_RAMP} />
+    <group {...props}>
+      <mesh position-y={2.1} castShadow>
+        <cylinderGeometry args={[0.05, 0.05, 4.2, 8]} />
+        <meshStandardMaterial color="#2a2e38" metalness={0.7} roughness={0.4} />
       </mesh>
-      {[0.016, -0.016].map((dz) => (
-        <mesh key={dz} position-z={dz} rotation-y={dz < 0 ? Math.PI : 0}>
-          <planeGeometry args={[0.8, 0.6]} />
-          <meshBasicMaterial map={textures[i]} toneMapped={false} />
+      <mesh position={[0, 3.0, 0.1]}>
+        <boxGeometry args={[0.8, 2.75, 0.12]} />
+        <meshStandardMaterial color="#181b24" metalness={0.4} roughness={0.5} />
+      </mesh>
+      <mesh position={[0, 3.0, 0.165]}>
+        <planeGeometry args={[0.74, 2.65]} />
+        <meshBasicMaterial map={tex} color={hdr('#ffffff', 1.8)} toneMapped={false} />
+      </mesh>
+    </group>
+  )
+}
+
+/* ---------------- Engineering: a doorway into a terminal ---------------- */
+
+const CODE = `@Controller('photos')
+export class PhotosController {
+  constructor(private readonly prisma: PrismaService) {}
+
+  @Get()
+  list(@Query() q: ListPhotosDto) {
+    return this.prisma.photo.findMany({
+      where: { city: q.city ?? 'Tokyo' },
+      orderBy: { takenAt: 'desc' },
+      take: 24,
+    })
+  }
+}
+
+$ docker compose up -d
+ ✔ Container db      Started
+ ✔ Container api     Started
+$ npx prisma migrate deploy
+ All migrations have been applied.
+$ curl -s dev.byairu.com/health
+{"status":"ok","uptime":"42d"}
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule)
+  app.enableShutdownHooks()
+  await app.listen(process.env.PORT ?? 3000)
+}
+bootstrap()
+`
+
+function DevGate({ p, boost }) {
+  const tex = useMemo(() => {
+    const t = canvasTexture(
+      512,
+      1024,
+      (ctx, w, h) => {
+        ctx.fillStyle = '#04121c'
+        ctx.fillRect(0, 0, w, h)
+        ctx.font = `20px ${MONO}`
+        ctx.textBaseline = 'top'
+        const lines = CODE.split('\n')
+        const lh = 27
+        let y = 14
+        let n = 1
+        while (y < h) {
+          for (const line of lines) {
+            if (y >= h) break
+            ctx.fillStyle = 'rgba(57,216,255,0.35)'
+            ctx.fillText(String(n).padStart(3, ' '), 10, y)
+            ctx.fillStyle = line.startsWith('$') ? '#e9fbff' : line.startsWith(' ✔') ? '#7dffb2' : '#7fe6ff'
+            ctx.fillText(line, 62, y)
+            y += lh
+            n++
+          }
+        }
+        // scanlines
+        ctx.fillStyle = 'rgba(0,0,0,0.18)'
+        for (let s = 0; s < h; s += 4) ctx.fillRect(0, s, w, 2)
+      },
+      { repeat: true },
+    )
+    t.repeat.set(1, 0.62)
+    return t
+  }, [])
+  const screen = useRef()
+  const tube = useMemo(() => new MeshBasicMaterial({ color: hdr(p.color, 3), toneMapped: false }), [p.color])
+  const base = useMemo(() => new Color(p.color), [p.color])
+
+  useFrame((state, dt) => {
+    const b = boost.current
+    tex.offset.y += dt * (0.025 + b * 0.18)
+    screen.current.color.setScalar(1.1 + b * 1.1)
+    const hum = 3 + b * 2.5 + Math.sin(state.clock.elapsedTime * 50) * 0.08
+    tube.color.copy(base).multiplyScalar(hum)
+  })
+
+  const H = 3.1
+  const Wd = 2.3
+  return (
+    <group>
+      {/* steel frame */}
+      {[-1, 1].map((s) => (
+        <mesh key={s} position={[(s * (Wd + 0.2)) / 2, H / 2, 0]} castShadow>
+          <boxGeometry args={[0.2, H, 0.34]} />
+          <meshStandardMaterial color="#20242e" metalness={0.8} roughness={0.35} />
         </mesh>
       ))}
+      <mesh position={[0, H + 0.1, 0]} castShadow>
+        <boxGeometry args={[Wd + 0.4, 0.2, 0.34]} />
+        <meshStandardMaterial color="#20242e" metalness={0.8} roughness={0.35} />
+      </mesh>
+      {/* neon tube just inside the frame */}
+      {[
+        [-(Wd / 2 - 0.04), H / 2, 0.06, H],
+        [Wd / 2 - 0.04, H / 2, 0.06, H],
+      ].map(([x, y, t, h], i) => (
+        <mesh key={i} position={[x, y, 0.18]} material={tube}>
+          <boxGeometry args={[t, h, t]} />
+        </mesh>
+      ))}
+      <mesh position={[0, H - 0.04, 0.18]} material={tube}>
+        <boxGeometry args={[Wd, 0.06, 0.06]} />
+      </mesh>
+      {/* the screen */}
+      <mesh position={[0, H / 2, 0]}>
+        <planeGeometry args={[Wd - 0.1, H - 0.08]} />
+        <meshBasicMaterial ref={screen} map={tex} toneMapped={false} side={DoubleSide} />
+      </mesh>
     </group>
-  ))
+  )
+}
+
+/* ---------------- Photography: a camera aperture that opens ---------------- */
+
+const RING = 1.5
+const CY = 1.95
+const BLADES = 8
+
+// Out-of-focus city lights drifting behind the lens, brighter in the middle
+function bokehMaterial(hex) {
+  const boost = uniform(0)
+  const tint = color(hex)
+  const m = new MeshBasicNodeMaterial()
+  m.colorNode = Fn(() => {
+    const p = uv().mul(2).sub(1)
+    const r = p.length()
+    const col = mix(tint.mul(0.25), tint.mul(0.9), r.oneMinus()).toVar()
+    Loop(10, ({ i }) => {
+      const f = float(i)
+      const c = vec2(sin(f.mul(2.31).add(time.mul(f.mul(0.013).add(0.11)))), cos(f.mul(1.73).add(time.mul(f.mul(0.011).add(0.09))))).mul(0.62)
+      const rad = fract(f.mul(0.371)).mul(0.09).add(0.13)
+      const dot = smoothstep(rad, rad.mul(0.8), p.sub(c).length())
+      const hue = mix(tint, select(f.lessThan(3), vec3(0.45, 0.85, 1.0), vec3(1.0, 0.9, 0.75)), 0.45)
+      col.addAssign(hue.mul(dot).mul(0.55))
+    })
+    col.addAssign(vec3(1.0, 0.93, 0.82).mul(pow(max(r.oneMinus(), 0), 2.5)).mul(boost.mul(2.5).add(1.4)))
+    return col.mul(boost.mul(0.8).add(1))
+  })()
+  m.userData.boost = boost
+  return m
+}
+
+function Aperture({ p, boost }) {
+  const bokeh = useMemo(() => bokehMaterial(p.color), [p.color])
+  const bladeGeo = useMemo(() => {
+    const g = new PlaneGeometry(1.35, 1)
+    g.translate(0, 0.5, 0) // pivot on the inner edge
+    return g
+  }, [])
+  const blades = useRef([])
+  const open = useRef(0.2)
+  const rim = useMemo(() => new MeshBasicMaterial({ color: hdr(p.color, 3), toneMapped: false }), [p.color])
+  const engraving = useMemo(
+    () =>
+      canvasTexture(1024, 1024, (ctx, w) => {
+        const text = '35mm  ƒ/1.4   ∞   10   5   3   2   1.5   1   0.7 m      frame by airu      '
+        ctx.fillStyle = '#121318'
+        ctx.beginPath()
+        ctx.arc(w / 2, w / 2, w / 2, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#d9dbe2'
+        ctx.font = `700 34px ${SANS}`
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        const rad = (1.76 / 1.95) * (w / 2)
+        const step = (Math.PI * 2) / text.length
+        ;[...text].forEach((ch, i) => {
+          const a = -Math.PI / 2 + i * step
+          ctx.save()
+          ctx.translate(w / 2 + Math.cos(a) * rad, w / 2 + Math.sin(a) * rad)
+          ctx.rotate(a + Math.PI / 2)
+          ctx.fillText(ch, 0, 0)
+          ctx.restore()
+        })
+        // amber index mark at the top
+        ctx.fillStyle = p.color
+        ctx.fillRect(w / 2 - 4, w / 2 - (1.95 / 1.95) * (w / 2) + 6, 8, 26)
+      }),
+    [p.color],
+  )
+
+  useFrame((state, dt) => {
+    const t = state.clock.elapsedTime
+    const b = boost.current
+    // idle: stopped down and breathing a little; near: wide open
+    const want = MathUtils.clamp(0.16 + Math.sin(t * 0.8) * 0.04 + b * 0.84, 0, 1)
+    open.current = MathUtils.damp(open.current, want, 5, dt)
+    const r = MathUtils.lerp(0.1, 1.3, open.current)
+    blades.current.forEach((m, i) => {
+      if (!m) return
+      const a = (i / BLADES) * Math.PI * 2 + open.current * 0.6
+      m.position.set(Math.cos(a) * r, Math.sin(a) * r, 0.02 + i * 0.004)
+      m.rotation.z = a - Math.PI / 2 + 0.42
+      m.scale.y = Math.max(0.05, 1.75 - r)
+    })
+    bokeh.userData.boost.value = b
+  })
+
+  return (
+    <group>
+      {/* cradle */}
+      <mesh position={[0, 0.16, 0]} castShadow receiveShadow>
+        <boxGeometry args={[2.8, 0.32, 0.7]} />
+        <meshStandardMaterial color="#1e2129" metalness={0.7} roughness={0.4} />
+      </mesh>
+      <group position-y={CY}>
+        <mesh position-z={-0.06} material={bokeh}>
+          <circleGeometry args={[RING - 0.1, 64]} />
+        </mesh>
+        {Array.from({ length: BLADES }, (_, i) => (
+          <mesh key={i} ref={(m) => (blades.current[i] = m)} geometry={bladeGeo}>
+            <meshStandardMaterial color="#17181d" metalness={0.75} roughness={0.32} side={DoubleSide} />
+          </mesh>
+        ))}
+        {/* lens barrel */}
+        <mesh castShadow>
+          <torusGeometry args={[RING + 0.05, 0.24, 20, 72]} />
+          <meshStandardMaterial color="#1a1b20" metalness={0.85} roughness={0.28} />
+        </mesh>
+        <mesh position-z={0.2}>
+          <ringGeometry args={[RING + 0.1, 1.95, 96]} />
+          <meshStandardMaterial map={engraving} metalness={0.6} roughness={0.4} />
+        </mesh>
+        <mesh position-z={0.12} material={rim}>
+          <torusGeometry args={[RING - 0.14, 0.025, 8, 96]} />
+        </mesh>
+      </group>
+    </group>
+  )
 }

@@ -1,16 +1,17 @@
-import { DataTexture, MeshBasicMaterial, BackSide, NearestFilter, RedFormat } from 'three'
+import { BackSide, DataTexture, MeshBasicNodeMaterial, NearestFilter, RedFormat } from 'three/webgpu'
+import { normalLocal, positionLocal } from 'three/tsl'
 
-// Cartoon shading, same as the game (web-3d-project/src/render/toon.js): every
-// lit surface uses MeshToonMaterial with this three-band ramp, so light falls
-// off in clean steps instead of a smooth PBR gradient. Cheaper than
-// MeshStandardMaterial too (no specular, no env map).
-//
-// In JSX: <meshToonMaterial gradientMap={TOON_RAMP} color="..." />
-
+// Three-band ramp for the cat's MeshToonMaterial, same as the island game
+// (web-3d-project/src/render/toon.js), so it keeps its look under neon.
 export const TOON_RAMP = new DataTexture(new Uint8Array([90, 180, 255]), 3, 1, RedFormat)
 TOON_RAMP.minFilter = TOON_RAMP.magFilter = NearestFilter
 TOON_RAMP.generateMipmaps = false
 TOON_RAMP.needsUpdate = true
 
-// Dark back-face shell for the cartoon outline on the runner and the crates
-export const OUTLINE = new MeshBasicMaterial({ color: 0x1e1e22, side: BackSide })
+// Dark shell pushed out along the normals. In a node material the offset runs
+// after skinning, so it follows the animated cat.
+export function outlineMaterial(thickness, color = 0x07080c) {
+  const m = new MeshBasicNodeMaterial({ color, side: BackSide })
+  m.positionNode = positionLocal.add(normalLocal.mul(thickness))
+  return m
+}

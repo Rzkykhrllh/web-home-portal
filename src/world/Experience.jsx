@@ -1,43 +1,47 @@
-import Sky from './Sky.jsx'
-import Plaza from './Plaza.jsx'
+import Sky, { HAZE } from './Sky.jsx'
+import City from './City.jsx'
+import Rooftop from './Rooftop.jsx'
 import Portal from './Portal.jsx'
 import Cat from './Cat.jsx'
-import Clouds from './Clouds.jsx'
+import Rain from './Rain.jsx'
+import Effects from './Effects.jsx'
 import Controller from './Controller.jsx'
 import FollowCamera from './FollowCamera.jsx'
 import { portals } from '../layout.js'
-
-export const HORIZON = '#f6b9a0'
+import { QUALITY } from '../quality.js'
 
 export default function Experience() {
   return (
     <>
       <Sky />
-      <fog attach="fog" args={[HORIZON, 35, 95]} />
-      <hemisphereLight args={['#c9d8ff', '#7a5f3c', 1.1]} />
+      <fog attach="fog" args={[HAZE, 22, 115]} />
+      <hemisphereLight args={['#4a5c9a', '#1a1222', 0.9]} />
+      {/* Moonlight through cloud: dim and blue, but it gives the shadows */}
       <directionalLight
-        castShadow
-        position={[7, 14, 9]}
-        intensity={2.4}
-        color="#fff1dc"
+        castShadow={QUALITY.shadows}
+        position={[-7, 14, 6]}
+        intensity={0.9}
+        color="#9fb2ff"
         shadow-mapSize={[1024, 1024]}
-        shadow-camera-left={-14}
-        shadow-camera-right={14}
-        shadow-camera-top={14}
-        shadow-camera-bottom={-14}
+        shadow-camera-left={-13}
+        shadow-camera-right={13}
+        shadow-camera-top={13}
+        shadow-camera-bottom={-13}
         shadow-camera-near={1}
         shadow-camera-far={40}
         shadow-bias={-0.0006}
         shadow-normalBias={0.03}
       />
-      <Plaza />
+      <City />
+      <Rooftop />
       {portals.map((p) => (
         <Portal key={p.id} p={p} />
       ))}
       <Cat />
-      <Clouds />
+      <Rain />
       <Controller />
       <FollowCamera />
+      <Effects />
     </>
   )
 }

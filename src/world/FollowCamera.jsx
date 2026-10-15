@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { MathUtils, Vector3 } from 'three'
+import { MathUtils, Vector3 } from 'three/webgpu'
 import { player } from '../store.js'
 import { reducedMotion } from '../portal-nav.js'
 
@@ -18,8 +18,8 @@ export default function FollowCamera() {
     st.t += dt
     const intro = 1 - (1 - Math.min(1, st.t / 2.4)) ** 3
     const portrait = state.size.width < state.size.height * 0.9
-    const back = portrait ? 18 : 10.5
-    const up = portrait ? 11.5 : 6.8
+    const back = portrait ? 17 : 10
+    const up = portrait ? 9.5 : 5.6
     // a wider lens on phones so both portals stay in frame
     const fov = portrait ? 56 : 45
     if (cam.fov !== fov) {
@@ -44,7 +44,7 @@ export default function FollowCamera() {
     cam.position.y = MathUtils.damp(cam.position.y, want.y, 4, dt)
     cam.position.z = MathUtils.damp(cam.position.z, want.z, 4, dt)
     look.x = MathUtils.damp(look.x, p.x * 0.95, 6, dt)
-    look.y = MathUtils.damp(look.y, 0.9, 6, dt)
+    look.y = MathUtils.damp(look.y, 1.4, 6, dt)
     look.z = MathUtils.damp(look.z, lookZ, 6, dt)
     cam.lookAt(look)
   })

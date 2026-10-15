@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useFrame, useLoader, useThree } from '@react-three/fiber'
-import { AnimationMixer, AnimationUtils, Box3, LoopOnce, MathUtils, MeshToonMaterial, SkinnedMesh } from 'three'
+import { AnimationMixer, AnimationUtils, Box3, LoopOnce, MathUtils, MeshToonMaterial, SkinnedMesh } from 'three/webgpu'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { clone } from 'three/addons/utils/SkeletonUtils.js'
@@ -10,7 +10,7 @@ import { reducedMotion } from '../portal-nav.js'
 import { spin } from '../input.js'
 import { player, uiStore } from '../store.js'
 import { dampAngle } from './math.js'
-import { OUTLINE, TOON_RAMP } from './toon.js'
+import { TOON_RAMP, outlineMaterial } from './toon.js'
 
 // Airu's tabby cat from web-3d-project / web-3d-island: the same rigged GLB
 // with Mixamo clips (idle, walk, run, victory, jump, spin). Here it's driven
@@ -50,16 +50,10 @@ function gameClips(animations) {
   return out
 }
 
-// Cartoon outline: a dark shell pushed out along the normals after skinning
+// Thin dark outline: a second skinned mesh sharing the skeleton, with its
+// vertices pushed out along the normals (see toon.js)
 function outlineFor(mesh, thickness) {
-  const mat = OUTLINE.clone()
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
-      '#include <skinning_vertex>',
-      `#include <skinning_vertex>\n transformed += normalize(objectNormal) * ${thickness.toFixed(5)};`,
-    )
-  }
-  const hull = new SkinnedMesh(mesh.geometry, mat)
+  const hull = new SkinnedMesh(mesh.geometry, outlineMaterial(thickness))
   hull.bind(mesh.skeleton, mesh.bindMatrix)
   hull.position.copy(mesh.position)
   hull.quaternion.copy(mesh.quaternion)
@@ -96,7 +90,7 @@ export default function Cat() {
       m.material = new MeshToonMaterial({ map: m.material.map, gradientMap: TOON_RAMP })
       m.castShadow = true
       m.frustumCulled = false
-      m.parent.add(outlineFor(m, 0.012 / scale))
+      m.parent.add(outlineFor(m, 0.006 / scale))
     }
     scene.traverse((o) => {
       if (o.isMesh) o.raycast = () => {}

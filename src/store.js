@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import { Vector3 } from 'three'
+import { Vector3 } from 'three/webgpu'
 
 // Per-frame state, mutated in place by the controller and read by the cat and
 // camera. Not React state: nothing re-renders when it changes.

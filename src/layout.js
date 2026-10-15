@@ -1,7 +1,7 @@
 import { PORTALS } from './config.js'
 
-// Portals turn to face a point just in front of the plaza, roughly where the
-// camera is, so you see both swirls at a slight angle from the start.
+// Portals turn to face a point just in front of the roof, roughly where the
+// camera is, so you see both at a slight angle from the start.
 const FACE = [0, 6]
 
 export const portals = PORTALS.map((p) => {
@@ -14,7 +14,7 @@ export const portals = PORTALS.map((p) => {
   return { ...p, x, z, yaw, fx, fz, rx, rz }
 })
 
-// Point in a portal's own frame: lx across the ring, lz through it
+// Point in a portal's own frame: lx across the opening, lz through it
 export function toLocal(p, x, z) {
   const dx = x - p.x
   const dz = z - p.z
@@ -24,28 +24,24 @@ export function fromLocal(p, lx, lz) {
   return [p.x + p.rx * lx + p.fx * lz, p.z + p.rz * lx + p.fz * lz]
 }
 
-// Trees, kept off the paths and out of the camera's way
-export const trees = [
-  [-9.0, -0.8, 1.15],
-  [-8.4, 3.6, 0.9],
-  [-7.6, 6.8, 1.0],
-  [9.1, -0.4, 1.1],
-  [8.5, 3.9, 0.95],
-  [7.8, 6.9, 0.85],
-  [-1.6, -9.6, 1.2],
-  [2.4, -9.3, 1.05],
-  [-5.2, -8.7, 0.8],
-  [5.6, -8.6, 0.9],
-  [-9.6, -4.6, 0.85],
-  [9.5, -4.8, 0.95],
+// Rooftop furniture
+export const VENDING = [0, -7.75]
+export const AC_UNITS = [
+  [-9.2, 1.2],
+  [-9.2, 2.7],
+  [9.2, 2.0],
 ]
-
-export const SIGN = [0, -2.9]
+export const TANK = [8.6, -6.9]
+export const SHED = [-8.7, -6.9] // stairwell hut
 
 // Round obstacles the cat bumps into: [x, z, radius]
 export const colliders = [
-  ...trees.map(([x, z, s]) => [x, z, 0.45 * s]),
-  [SIGN[0], SIGN[1], 0.22],
-  // the ring's two feet
-  ...portals.flatMap((p) => [-1.45, 1.45].map((lx) => [...fromLocal(p, lx, 0), 0.32])),
+  [VENDING[0], VENDING[1], 0.7],
+  ...AC_UNITS.map(([x, z]) => [x, z, 0.75]),
+  [TANK[0], TANK[1], 1.3],
+  [SHED[0], SHED[1], 1.5],
+  // the two posts of each portal
+  ...portals.flatMap((p) => [-1.2, 1.2].map((lx) => [...fromLocal(p, lx, 0), 0.25])),
+  // and the pole of its neon sign
+  ...portals.map((p) => [...fromLocal(p, (p.x < 0 ? -1 : 1) * 2.45, -0.2), 0.2]),
 ]
