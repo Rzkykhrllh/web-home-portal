@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { ACESFilmicToneMapping, PCFShadowMap, WebGPURenderer } from 'three/webgpu'
+import { ACESFilmicToneMapping, WebGPURenderer } from 'three/webgpu'
 import Experience from './Experience.jsx'
 import { uiStore } from '../store.js'
 import { QUALITY } from '../quality.js'
@@ -8,7 +8,8 @@ import { QUALITY } from '../quality.js'
 // WebGPU first. Browsers without it get the same renderer on its WebGL 2
 // backend, so every material and effect (all TSL) still works.
 async function createRenderer(props) {
-  const renderer = new WebGPURenderer({ ...props, antialias: true, powerPreference: 'high-performance' })
+  // No MSAA on the canvas: the scene renders into the pipeline's own target, and FXAA runs at the end
+  const renderer = new WebGPURenderer({ ...props, antialias: false, powerPreference: 'high-performance' })
   await renderer.init()
   renderer.toneMapping = ACESFilmicToneMapping
   renderer.toneMappingExposure = 1.05
@@ -21,7 +22,6 @@ export default function Stage() {
     <Canvas
       className="stage"
       gl={createRenderer}
-      shadows={QUALITY.shadows ? { type: PCFShadowMap } : false}
       dpr={QUALITY.dpr}
       camera={{ fov: 45, near: 0.1, far: 400, position: [0, 14, 22] }}
       onCreated={({ gl }) => {

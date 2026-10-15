@@ -98,7 +98,7 @@ function NeonSign({ p, ...props }) {
   )
   return (
     <group {...props}>
-      <mesh position-y={2.1} castShadow>
+      <mesh position-y={2.1}>
         <cylinderGeometry args={[0.05, 0.05, 4.2, 8]} />
         <meshStandardMaterial color="#2a2e38" metalness={0.7} roughness={0.4} />
       </mesh>
@@ -198,12 +198,12 @@ function DevGate({ p, boost }) {
     <group>
       {/* steel frame */}
       {[-1, 1].map((s) => (
-        <mesh key={s} position={[(s * (Wd + 0.2)) / 2, H / 2, 0]} castShadow>
+        <mesh key={s} position={[(s * (Wd + 0.2)) / 2, H / 2, 0]}>
           <boxGeometry args={[0.2, H, 0.34]} />
           <meshStandardMaterial color="#20242e" metalness={0.8} roughness={0.35} />
         </mesh>
       ))}
-      <mesh position={[0, H + 0.1, 0]} castShadow>
+      <mesh position={[0, H + 0.1, 0]}>
         <boxGeometry args={[Wd + 0.4, 0.2, 0.34]} />
         <meshStandardMaterial color="#20242e" metalness={0.8} roughness={0.35} />
       </mesh>
@@ -317,7 +317,7 @@ function Aperture({ p, boost }) {
   return (
     <group>
       {/* cradle */}
-      <mesh position={[0, 0.16, 0]} castShadow receiveShadow>
+      <mesh position={[0, 0.16, 0]}>
         <boxGeometry args={[2.8, 0.32, 0.7]} />
         <meshStandardMaterial color="#1e2129" metalness={0.7} roughness={0.4} />
       </mesh>
@@ -331,7 +331,7 @@ function Aperture({ p, boost }) {
           </mesh>
         ))}
         {/* lens barrel */}
-        <mesh castShadow>
+        <mesh>
           <torusGeometry args={[RING + 0.05, 0.24, 20, 72]} />
           <meshStandardMaterial color="#1a1b20" metalness={0.85} roughness={0.28} />
         </mesh>

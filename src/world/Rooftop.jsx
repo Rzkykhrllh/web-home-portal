@@ -1,13 +1,13 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { Color, MeshStandardNodeMaterial, Vector2 } from 'three/webgpu'
+import { BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, MeshStandardNodeMaterial, SphereGeometry, TubeGeometry, Vector3 } from 'three/webgpu'
 import { color, float, mx_noise_float, positionWorld, reflector, texture, time, vec2, vec3 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { AC_UNITS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
 import { QUALITY } from '../quality.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
-import { windowsTexture } from './City.jsx'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
 const W = ROOF.x * 2
 const D = ROOF.front - ROOF.back
@@ -128,10 +128,11 @@ export default function Rooftop() {
       m.emissiveNode = color('#2a2550').mul(wet.mul(0.9))
       return { floor: m, target: null }
     }
-    const mirror = reflector({ resolutionScale: 0.5 })
+    const mirror = reflector({ resolutionScale: 0.4 })
     mirror.target.rotateX(-Math.PI / 2)
     const p = positionWorld.xz.mul(6)
-    const ripple = vec2(mx_noise_float(vec3(p, time.mul(1.7))), mx_noise_float(vec3(p.add(9.1), time.mul(1.7))))
+    const n = mx_noise_float(vec3(p, time.mul(1.7)))
+    const ripple = vec2(n, n.mul(-0.7)) // one noise lookup, skewed, reads as ripples just as well
     mirror.uvNode = mirror.uvNode.add(ripple.mul(wet.mul(0.006).add(0.002)))
     m.emissiveNode = mirror.rgb.mul(vec3(0.62, 0.66, 0.78)).mul(wet.mul(0.85).add(float(0.1)))
     return { floor: m, target: mirror.target }
@@ -151,7 +152,7 @@ export default function Rooftop() {
         rotation-x={-Math.PI / 2}
         position={[0, 0, CZ]}
         material={floor}
-        receiveShadow
+       
         onClick={onGround}
         onPointerOver={cursor('pointer')}
         onPointerOut={cursor('')}
@@ -159,7 +160,6 @@ export default function Rooftop() {
         <planeGeometry args={[W, D]} />
       </mesh>
 
-      <Building />
       <Parapet />
       <VendingMachine position={[VENDING[0], 0, VENDING[1]]} />
       {AC_UNITS.map(([x, z], i) => (
@@ -172,64 +172,42 @@ export default function Rooftop() {
   )
 }
 
-// The building under the roof, so the slab sits on something with lit floors
-function Building() {
-  const tex = useMemo(() => {
-    const t = windowsTexture(3).clone()
-    t.repeat.set(W / 3, 40 / 3.4)
-    t.needsUpdate = true
-    return t
+// Parapet walls and the railing on top, merged into three meshes
+function Parapet() {
+  const { walls, posts, rails } = useMemo(() => {
+    const H = 0.85
+    const T = 0.3
+    const at = (g, x, y, z) => g.translate(x, y, z)
+    const walls = mergeGeometries([
+      // back, left, right: full height; front: a low lip so the camera sees over it
+      at(new BoxGeometry(W + T * 2, H, T), 0, H / 2, ROOF.back - T / 2),
+      at(new BoxGeometry(T, H, D), -ROOF.x - T / 2, H / 2, CZ),
+      at(new BoxGeometry(T, H, D), ROOF.x + T / 2, H / 2, CZ),
+      at(new BoxGeometry(W + T * 2, 0.24, T), 0, 0.12, ROOF.front + T / 2),
+    ])
+    const spots = []
+    for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 1.5) spots.push([x, ROOF.back - T / 2])
+    for (let z = ROOF.back + 1.5; z <= ROOF.front; z += 1.5) spots.push([-ROOF.x - T / 2, z], [ROOF.x + T / 2, z])
+    const posts = mergeGeometries(spots.map(([x, z]) => at(new CylinderGeometry(0.025, 0.025, 1, 6), x, H + 0.5, z)))
+    const rail = (len) => new CylinderGeometry(0.035, 0.035, len, 6).rotateZ(Math.PI / 2)
+    const rails = mergeGeometries([
+      at(rail(W), 0, H + 1, ROOF.back - T / 2),
+      at(rail(D).rotateY(Math.PI / 2), -ROOF.x - T / 2, H + 1, CZ),
+      at(rail(D).rotateY(Math.PI / 2), ROOF.x + T / 2, H + 1, CZ),
+    ])
+    return { walls, posts, rails }
   }, [])
   return (
-    <mesh position={[0, -20.2, CZ]}>
-      <boxGeometry args={[W + 0.6, 40, D + 0.6]} />
-      <meshStandardMaterial color="#0b0e17" emissive="#ffffff" emissiveMap={tex} emissiveIntensity={0.9} roughness={0.9} />
-    </mesh>
-  )
-}
-
-function Parapet() {
-  const H = 0.85
-  const T = 0.3
-  const wall = '#3b3f4a'
-  const pieces = [
-    // back, left, right: full height; front: a low lip so the camera sees over it
-    [0, H / 2, ROOF.back - T / 2, W + T * 2, H, T],
-    [-ROOF.x - T / 2, H / 2, CZ, T, H, D],
-    [ROOF.x + T / 2, H / 2, CZ, T, H, D],
-    [0, 0.12, ROOF.front + T / 2, W + T * 2, 0.24, T],
-  ]
-  const posts = []
-  for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 1.5) posts.push([x, ROOF.back - T / 2])
-  for (let z = ROOF.back + 1.5; z <= ROOF.front; z += 1.5) {
-    posts.push([-ROOF.x - T / 2, z])
-    posts.push([ROOF.x + T / 2, z])
-  }
-  return (
     <group>
-      {pieces.map(([x, y, z, w, h, d], i) => (
-        <mesh key={i} position={[x, y, z]} castShadow receiveShadow>
-          <boxGeometry args={[w, h, d]} />
-          <meshStandardMaterial color={wall} roughness={0.85} />
-        </mesh>
-      ))}
-      {/* Safety railing on top of the parapet */}
-      {posts.map(([x, z], i) => (
-        <mesh key={i} position={[x, H + 0.5, z]}>
-          <cylinderGeometry args={[0.025, 0.025, 1, 6]} />
-          <meshStandardMaterial color="#6d7380" metalness={0.8} roughness={0.35} />
-        </mesh>
-      ))}
-      {[
-        [0, ROOF.back - T / 2, W, 0],
-        [-ROOF.x - T / 2, CZ, D, Math.PI / 2],
-        [ROOF.x + T / 2, CZ, D, Math.PI / 2],
-      ].map(([x, z, len, rot], i) => (
-        <mesh key={i} position={[x, H + 1, z]} rotation={[0, rot, Math.PI / 2]}>
-          <cylinderGeometry args={[0.035, 0.035, len, 6]} />
-          <meshStandardMaterial color="#7a808d" metalness={0.8} roughness={0.3} />
-        </mesh>
-      ))}
+      <mesh geometry={walls}>
+        <meshStandardMaterial color="#3b3f4a" roughness={0.85} />
+      </mesh>
+      <mesh geometry={posts}>
+        <meshStandardMaterial color="#6d7380" metalness={0.8} roughness={0.35} />
+      </mesh>
+      <mesh geometry={rails}>
+        <meshStandardMaterial color="#7a808d" metalness={0.8} roughness={0.3} />
+      </mesh>
     </group>
   )
 }
@@ -270,7 +248,7 @@ function VendingMachine(props) {
   )
   return (
     <group {...props}>
-      <mesh position-y={0.95} castShadow>
+      <mesh position-y={0.95}>
         <boxGeometry args={[1.05, 1.9, 0.75]} />
         <meshStandardMaterial color="#c9ccd4" roughness={0.5} metalness={0.3} />
       </mesh>
@@ -309,7 +287,7 @@ function AcUnit(props) {
   useFrame((_, dt) => fan.current && (fan.current.rotation.z += dt * 6))
   return (
     <group {...props}>
-      <mesh position-y={0.4} castShadow receiveShadow>
+      <mesh position-y={0.4}>
         <boxGeometry args={[1.2, 0.8, 0.5]} />
         <meshStandardMaterial color="#b9bdc6" roughness={0.6} metalness={0.2} />
       </mesh>
@@ -339,7 +317,7 @@ function WaterTank(props) {
           <meshStandardMaterial color="#555b66" metalness={0.6} roughness={0.5} />
         </mesh>
       ))}
-      <mesh position-y={2.1} castShadow>
+      <mesh position-y={2.1}>
         <cylinderGeometry args={[1.05, 1.05, 1.9, 24]} />
         <meshStandardMaterial color="#8d939e" metalness={0.5} roughness={0.45} />
       </mesh>
@@ -355,7 +333,7 @@ function WaterTank(props) {
 function Stairwell(props) {
   return (
     <group {...props}>
-      <mesh position-y={1.4} castShadow receiveShadow>
+      <mesh position-y={1.4}>
         <boxGeometry args={[2.6, 2.8, 2.2]} />
         <meshStandardMaterial color="#454a55" roughness={0.85} />
       </mesh>
@@ -367,63 +345,35 @@ function Stairwell(props) {
         <boxGeometry args={[0.7, 0.06, 0.08]} />
         <meshBasicMaterial color={glow('#eaf4ff', 3)} toneMapped={false} />
       </mesh>
-      <pointLight position={[0.4, 2.2, 1.6]} color="#dfeaff" intensity={4} distance={5} decay={1.8} />
     </group>
   )
 }
 
-// Two strings of warm bulbs across the roof, for a bit of warmth against the blue
+// A string of warm bulbs along the back of the roof, for a bit of warmth
+// against the blue. Bulbs and wire are one mesh each.
 function Festoon() {
-  const strings = useMemo(() => {
-    const make = (a, b, sag, n) => {
-      const pts = []
-      for (let i = 0; i <= n; i++) {
-        const t = i / n
-        pts.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t - Math.sin(t * Math.PI) * sag, a[2] + (b[2] - a[2]) * t])
-      }
-      return pts
+  const { bulbs, wire, mid } = useMemo(() => {
+    const a = [-10.4, 3.5, -8.3]
+    const b = [10.4, 3.5, -8.3]
+    const n = 14
+    const pts = []
+    for (let i = 0; i <= n; i++) {
+      const t = i / n
+      pts.push(new Vector3(a[0] + (b[0] - a[0]) * t, a[1] - Math.sin(t * Math.PI) * 0.7, a[2]))
     }
-    return [make([-10.4, 3.5, -8.3], [10.4, 3.5, -8.3], 0.7, 14)]
+    const bulbs = mergeGeometries(pts.map((p) => new SphereGeometry(0.07, 8, 6).translate(p.x, p.y, p.z)))
+    const wire = new TubeGeometry(new CatmullRomCurve3(pts.map((p) => p.clone().setY(p.y + 0.06))), 64, 0.008, 4)
+    return { bulbs, wire, mid: pts[n >> 1] }
   }, [])
-  const bulb = useMemo(() => glow('#ffc46b', 2.6), [])
-  const mats = useRef([])
-  useFrame((state) => {
-    const t = state.clock.elapsedTime
-    // one bulb on each string flickers now and then
-    mats.current.forEach((m, i) => {
-      if (!m) return
-      const f = Math.sin(t * 13 + i * 7) > 0.97 ? 0.35 : 1
-      m.color.copy(bulb).multiplyScalar(f)
-    })
-  })
-  return strings.map((pts, s) => (
-    <group key={s}>
-      {pts.map(([x, y, z], i) => (
-        <mesh key={i} position={[x, y, z]}>
-          <sphereGeometry args={[0.07, 8, 6]} />
-          <meshBasicMaterial
-            ref={i === 5 ? (m) => (mats.current[s] = m) : undefined}
-            color={bulb}
-            toneMapped={false}
-          />
-        </mesh>
-      ))}
-      {pts.slice(1).map(([x, y, z], i) => {
-        const [px, py, pz] = pts[i]
-        const v = new Vector2(x - px, z - pz)
-        const len = Math.hypot(v.length(), y - py)
-        return (
-          <mesh
-            key={`w${i}`}
-            position={[(x + px) / 2, (y + py) / 2 + 0.05, (z + pz) / 2]}
-            rotation={[0, -Math.atan2(z - pz, x - px), Math.atan2(y - py, v.length()) + Math.PI / 2]}
-          >
-            <cylinderGeometry args={[0.008, 0.008, len, 4]} />
-            <meshBasicMaterial color="#111" />
-          </mesh>
-        )
-      })}
-      <pointLight position={[0, pts[Math.floor(pts.length / 2)][1] - 0.3, pts[Math.floor(pts.length / 2)][2] + 1]} color="#ffb85c" intensity={4} distance={10} decay={1.5} />
+  return (
+    <group>
+      <mesh geometry={bulbs}>
+        <meshBasicMaterial color={glow('#ffc46b', 2.6)} toneMapped={false} />
+      </mesh>
+      <mesh geometry={wire}>
+        <meshBasicMaterial color="#111" />
+      </mesh>
+      <pointLight position={[mid.x, mid.y - 0.3, mid.z + 1]} color="#ffb85c" intensity={4} distance={10} decay={1.5} />
     </group>
-  ))
+  )
 }

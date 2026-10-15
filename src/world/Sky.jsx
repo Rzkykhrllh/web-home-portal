@@ -21,7 +21,7 @@ export default function Sky() {
       const c = select(h.lessThan(0), below, above).toVar()
       // a layer of low cloud catching the light
       const uv = dir.xz.div(max(h, 0.08)).mul(0.6)
-      const n = mx_noise_float(vec3(uv.mul(1.5), 0)).mul(0.6).add(mx_noise_float(vec3(uv.mul(4), 3)).mul(0.4)).mul(0.5).add(0.5)
+      const n = mx_noise_float(vec3(uv.mul(2), 0)).mul(0.5).add(0.5) // one octave is plenty this faint
       c.addAssign(glow.mul(0.35).mul(smoothstep(0.45, 0.85, n)).mul(smoothstep(0.5, 0.08, h)).mul(h.greaterThan(0).select(1, 0)))
       return c
     })()

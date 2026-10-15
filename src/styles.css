@@ -407,3 +407,17 @@ kbd {
     transition: opacity 120ms;
   }
 }
+
+/* ?stats */
+.stats {
+  position: fixed;
+  left: 16px;
+  bottom: 70px;
+  margin: 0;
+  padding: 6px 10px;
+  background: rgb(0 0 0 / 0.6);
+  color: #9fffe0;
+  font: 12px/1.4 ui-monospace, Menlo, monospace;
+  z-index: 40;
+  pointer-events: none;
+}

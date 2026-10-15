@@ -1,53 +1,53 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { Color, MeshBasicMaterial } from 'three/webgpu'
+import { BoxGeometry, Color, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
+import { abs, color, floor, fract, hash, mix, normalWorld, positionWorld, step, vec2 } from 'three/tsl'
+import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 
-// Lit office and apartment windows. A few variants, shared by every building.
-const cache = new Map()
-export function windowsTexture(seed) {
-  if (cache.has(seed)) return cache.get(seed)
-  const tex = canvasTexture(
-    128,
-    256,
-    (ctx, w, h) => {
-      const r = rng(seed * 97 + 3)
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, w, h)
-      const cols = 8
-      const rows = 16
-      const cw = w / cols
-      const rh = h / rows
-      for (let y = 0; y < rows; y++) {
-        // whole floors tend to be lit or dark together, like real offices
-        const floor = r()
-        for (let x = 0; x < cols; x++) {
-          const lit = r() < (floor > 0.6 ? 0.75 : floor > 0.25 ? 0.3 : 0.05)
-          if (!lit) continue
-          const k = r()
-          ctx.fillStyle = k < 0.55 ? '#ffd7a0' : k < 0.85 ? '#d6e8ff' : '#9fffe0'
-          ctx.globalAlpha = 0.35 + r() * 0.65
-          ctx.fillRect(x * cw + 3, y * rh + 3, cw - 6, rh - 6)
-        }
-      }
-      ctx.globalAlpha = 1
-    },
-    { repeat: true },
-  )
-  cache.set(seed, tex)
-  return tex
+// Lit windows, computed in the shader from world position instead of a
+// texture per building. That lets every building, plus the one under our
+// roof, share one material and one merged mesh: the whole city is a single
+// draw call.
+export const cityMaterial = (() => {
+  const m = new MeshStandardNodeMaterial({ roughness: 0.9, metalness: 0 })
+  const n = normalWorld
+  const wall = step(abs(n.y), 0.5) // 1 on walls, 0 on roofs
+  // distance along the wall, whichever way it faces
+  const along = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
+  const cell = vec2(along.div(1.0), positionWorld.y.div(2.2))
+  const id = floor(cell)
+  const f = fract(cell)
+  const pane = step(0.18, f.x).mul(step(f.x, 0.82)).mul(step(0.25, f.y)).mul(step(f.y, 0.75))
+  // whole floors tend to be lit or dark together, like real offices
+  const floorLit = hash(id.y.mul(13.7).add(floor(along.div(9)).mul(71.3)))
+  const r = hash(id.x.mul(17.1).add(id.y.mul(311.7)))
+  const chance = mix(0.05, 0.75, step(0.4, floorLit)).add(step(0.75, floorLit).mul(0.1))
+  const lit = step(r, chance).mul(pane).mul(wall)
+  const tint = mix(color('#ffd7a0'), color('#d6e8ff'), step(0.55, hash(id.x.add(id.y.mul(7.3)).add(3.1))))
+  const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.65).add(0.35)
+  m.colorNode = mix(color('#141824'), color('#0a0d16'), wall)
+  m.emissiveNode = tint.mul(lit).mul(level).mul(1.1)
+  return m
+})()
+
+const box = (w, h, d, x, y, z, rot = 0) => {
+  const g = new BoxGeometry(w, h, d)
+  g.applyMatrix4(new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromEuler(new Euler(0, rot, 0)), new Vector3(1, 1, 1)))
+  return g
 }
 
-// The city around the roof: blocks of lit windows fading into the haze, red
-// aircraft lights blinking on the tall ones, and one big vertical sign.
+// The city round the roof: blocks fading into the haze and red aircraft
+// beacons blinking on the tall ones. Plus one big vertical sign.
 export default function City() {
-  const { buildings, beacons } = useMemo(() => {
+  const { geometry, beacons } = useMemo(() => {
     const r = rng(42)
-    const buildings = []
-    const beacons = []
+    const parts = []
+    const lights = []
     for (let i = 0; i < 70; i++) {
-      // mostly behind and to the sides; the camera looks that way
-      const a = Math.PI * (0.05 + r() * 0.9) + Math.PI // 180°..360° = behind (−z)
+      // mostly behind and to the sides; that's where the camera looks
+      const a = Math.PI * (0.05 + r() * 0.9) + Math.PI
       const side = r() < 0.2 ? Math.PI * (r() < 0.5 ? -0.35 : 0.35) : 0
       const dist = 28 + r() * 80
       const x = Math.cos(a + side) * dist
@@ -57,60 +57,35 @@ export default function City() {
       // near blocks sit below the roof so we look out over them; the far ones tower
       const top = dist < 48 ? -20 + r() * 16 : -12 + r() * 44
       const h = top + 70
-      buildings.push({ x, z, w, d, h, top, seed: 1 + Math.floor(r() * 4), rot: (r() - 0.5) * 0.3 })
-      if (top > 6) beacons.push([x, top + 0.6, z])
+      r() // (was the window-texture pick; still drawn so the skyline stays the same)
+      parts.push(box(w, h, d, x, top - h / 2, z, (r() - 0.5) * 0.3))
+      if (top > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.6, z))
     }
-    return { buildings, beacons }
+    // the building we're standing on, and the one carrying the big sign
+    const W = ROOF.x * 2 + 0.6
+    const D = ROOF.front - ROOF.back + 0.6
+    parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
+    parts.push(box(12, 60, 8, -18, -30, -40))
+    return { geometry: mergeGeometries(parts), beacons: mergeGeometries(lights) }
   }, [])
-
-  const mats = useMemo(
-    () =>
-      buildings.map((b) => {
-        const t = windowsTexture(b.seed).clone()
-        t.repeat.set(Math.max(1, Math.round(b.w / 3.2)), Math.round(b.h / 3.4))
-        t.needsUpdate = true
-        return t
-      }),
-    [buildings],
-  )
 
   return (
     <group>
-      {buildings.map((b, i) => (
-        <mesh key={i} position={[b.x, b.top - b.h / 2, b.z]} rotation-y={b.rot}>
-          <boxGeometry args={[b.w, b.h, b.d]} />
-          {/* windows on the walls, a plain dark roof on top (box face 2) */}
-          {[0, 1, 2, 3, 4, 5].map((f) =>
-            f === 2 || f === 3 ? (
-              <meshStandardMaterial key={f} attach={`material-${f}`} color="#141824" roughness={0.95} />
-            ) : (
-              <meshStandardMaterial key={f} attach={`material-${f}`} color="#0a0d16" emissive="#ffffff" emissiveMap={mats[i]} emissiveIntensity={1.1} roughness={0.9} />
-            ),
-          )}
-        </mesh>
-      ))}
-      <Beacons points={beacons} />
+      <mesh geometry={geometry} material={cityMaterial} />
+      <Beacons geometry={beacons} />
       <BigSign />
     </group>
   )
 }
 
-function Beacons({ points }) {
+function Beacons({ geometry }) {
   const red = useMemo(() => new Color('#ff2a2a').multiplyScalar(5), [])
   const mat = useMemo(() => new MeshBasicMaterial({ color: red.clone(), toneMapped: false }), [red])
   useFrame((state) => {
     const on = Math.sin(state.clock.elapsedTime * 2.2) > 0.2
     mat.color.copy(red).multiplyScalar(on ? 1 : 0.08)
   })
-  return (
-    <group>
-      {points.map((p, i) => (
-        <mesh key={i} position={p} material={mat}>
-          <sphereGeometry args={[0.35, 8, 6]} />
-        </mesh>
-      ))}
-    </group>
-  )
+  return <mesh geometry={geometry} material={mat} />
 }
 
 // A tall vertical sign on the building behind: the cat's name in katakana
@@ -133,18 +108,11 @@ function BigSign() {
       }),
     [],
   )
-  const color = useMemo(() => new Color('#ffffff').multiplyScalar(1.8), [])
+  const tint = useMemo(() => new Color('#ffffff').multiplyScalar(1.8), [])
   return (
-    <group position={[-18, 0, -40]}>
-      <mesh position-y={-30}>
-        <boxGeometry args={[12, 60, 8]} />
-        <meshStandardMaterial color="#090b12" roughness={0.9} />
-      </mesh>
-      <mesh position={[4.5, 7, 4.05]}>
-        <planeGeometry args={[3, 10.8]} />
-        <meshBasicMaterial map={tex} color={color} toneMapped={false} />
-      </mesh>
-      
-    </group>
+    <mesh position={[-13.5, 7, -35.95]}>
+      <planeGeometry args={[3, 10.8]} />
+      <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
+    </mesh>
   )
 }

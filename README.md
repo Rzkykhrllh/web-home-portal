@@ -45,8 +45,16 @@ the platform sign's button) opens the site in a new tab without the warp.
 
 ## Quality
 
-Phones get a lighter version: no puddle reflections, no shadows, less rain.
-Force either with `?quality=low` or `?quality=high`.
+Phones get a lighter version: no puddle reflections and less rain. Force
+either with `?quality=low` or `?quality=high`.
+
+Kept light on purpose: the whole city (and the building under the roof) is one
+merged mesh whose windows are drawn in the shader, the parapet and festoon are
+merged too, there's no shadow pass (a blob shadow grounds the cat), and FXAA
+replaces MSAA. That's about 120 draw calls a frame including the puddle
+reflection pass, down from ~900. If the frame rate still drops under ~50, the
+pixel ratio steps down (never below 1). Add `?stats` to see fps, pixel ratio,
+draw calls and which backend (WebGPU or WebGL 2) is running.
 
 ## Changing the portals
 
@@ -70,13 +78,14 @@ src/
   ui/Overlay.jsx      name board, line links, platform sign, touch stick, loader
   world/
     Stage.jsx         <Canvas> with WebGPURenderer (lazy-loaded)
-    Effects.jsx       RenderPipeline + bloom
+    Effects.jsx       RenderPipeline: bloom + FXAA
+    Perf.jsx          adaptive pixel ratio, ?stats overlay
     Controller.jsx    moves the cat, collisions, portal triggers
     Cat.jsx           the rigged cat, its clips, spin / jump / warp
     FollowCamera.jsx  third-person camera, wider on phones
     Portal.jsx        sign, floor glow, DevGate (code door), Aperture (lens)
     Rooftop.jsx       wet slab + reflector, parapet, vending machine, AC, tank
-    City.jsx          lit buildings, aircraft beacons, the アイル sign
+    City.jsx          one merged mesh with shader windows, beacons, the アイル sign
     Sky.jsx, Rain.jsx
 ```
 
