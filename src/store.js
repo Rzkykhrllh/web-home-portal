@@ -4,7 +4,7 @@ import { Vector3 } from 'three/webgpu'
 // Per-frame state, mutated in place by the controller and read by the cat and
 // camera. Not React state: nothing re-renders when it changes.
 export const player = {
-  pos: new Vector3(0, 0, 2.5),
+  pos: new Vector3(0, 0, 0.8),
   vel: new Vector3(),
   speed: 0, // 0..1 of MAX_SPEED
   jump: 99, // seconds since the last jump started

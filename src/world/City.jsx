@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, Color, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { abs, color, floor, fract, hash, mix, normalWorld, positionWorld, step, vec2 } from 'three/tsl'
+import { abs, color, floor, fract, hash, mix, normalWorld, positionWorld, select, smoothstep, step, vec2 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 
@@ -11,7 +11,7 @@ import { SANS, canvasTexture, rng } from './canvasTexture.js'
 // roof, share one material and one merged mesh: the whole city is a single
 // draw call.
 export const cityMaterial = (() => {
-  const m = new MeshStandardNodeMaterial({ roughness: 0.9, metalness: 0 })
+  const m = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 })
   const n = normalWorld
   const wall = step(abs(n.y), 0.5) // 1 on walls, 0 on roofs
   // distance along the wall, whichever way it faces
@@ -21,14 +21,23 @@ export const cityMaterial = (() => {
   const f = fract(cell)
   const pane = step(0.18, f.x).mul(step(f.x, 0.82)).mul(step(0.25, f.y)).mul(step(f.y, 0.75))
   // whole floors tend to be lit or dark together, like real offices
-  const floorLit = hash(id.y.mul(13.7).add(floor(along.div(9)).mul(71.3)))
+  const block = floor(along.div(9))
+  const floorLit = hash(id.y.mul(13.7).add(block.mul(71.3)))
   const r = hash(id.x.mul(17.1).add(id.y.mul(311.7)))
-  const chance = mix(0.05, 0.75, step(0.4, floorLit)).add(step(0.75, floorLit).mul(0.1))
+  const chance = mix(0.04, 0.6, step(0.45, floorLit)).add(step(0.8, floorLit).mul(0.15))
   const lit = step(r, chance).mul(pane).mul(wall)
-  const tint = mix(color('#ffd7a0'), color('#d6e8ff'), step(0.55, hash(id.x.add(id.y.mul(7.3)).add(3.1))))
-  const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.65).add(0.35)
-  m.colorNode = mix(color('#141824'), color('#0a0d16'), wall)
-  m.emissiveNode = tint.mul(lit).mul(level).mul(1.1)
+  // mostly cool cyan and blue-white, some warm orange, as in an illustrated skyline
+  const k = hash(id.x.add(id.y.mul(7.3)).add(3.1))
+  const tint = select(k.lessThan(0.5), color('#6fe3ff'), select(k.lessThan(0.75), color('#bcd3ff'), color('#ffa860')))
+  const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.6).add(0.4)
+  // some facades are lit glass: vertical cyan stripes over the whole wall
+  const glassy = step(0.86, hash(block.mul(3.7).add(floor(positionWorld.y.div(60)))))
+  const stripe = step(fract(along.mul(0.5)), 0.12).mul(glassy).mul(wall).mul(0.5)
+  // aerial perspective: near blocks are deep indigo, far ones lighter violet
+  const dist = positionWorld.xz.length()
+  const body = mix(color('#1a1442'), color('#43307a'), smoothstep(40, 170, dist))
+  m.colorNode = mix(body.mul(0.8), body, wall)
+  m.emissiveNode = tint.mul(lit.mul(level).add(stripe)).mul(1.15)
   return m
 })()
 
@@ -38,35 +47,46 @@ const box = (w, h, d, x, y, z, rot = 0) => {
   return g
 }
 
-// The city round the roof: blocks fading into the haze and red aircraft
-// beacons blinking on the tall ones. Plus one big vertical sign.
+// The city round the roof: a near ring of blocks, a dense far skyline fading
+// to violet, antenna spires and red aircraft beacons. Plus one big sign.
 export default function City() {
   const { geometry, beacons } = useMemo(() => {
     const r = rng(42)
     const parts = []
     const lights = []
+    const add = (dist, x, z, w, d, top) => {
+      const h = top + 80
+      parts.push(box(w, h, d, x, top - h / 2, z, (r() - 0.5) * 0.25))
+      if (top > 10 && r() < 0.35) {
+        // antenna spire on some of the tall ones
+        const sh = 4 + r() * 8
+        parts.push(new CylinderGeometry(0.08, 0.5, sh, 6).translate(x, top + sh / 2, z))
+        lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + sh + 0.3, z))
+      } else if (top > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.6, z))
+    }
+    // the near ring: blocks below roof level close in, getting taller with distance
     for (let i = 0; i < 70; i++) {
-      // mostly behind and to the sides; that's where the camera looks
-      const a = Math.PI * (0.05 + r() * 0.9) + Math.PI
-      const side = r() < 0.2 ? Math.PI * (r() < 0.5 ? -0.35 : 0.35) : 0
+      const a = Math.PI * (0.02 + r() * 0.96) + Math.PI
+      const side = r() < 0.25 ? Math.PI * (r() < 0.5 ? -0.3 : 0.3) : 0
       const dist = 28 + r() * 80
       const x = Math.cos(a + side) * dist
       const z = Math.sin(a + side) * dist - 4
-      const w = 5 + r() * 9
-      const d = 5 + r() * 9
-      // near blocks sit below the roof so we look out over them; the far ones tower
-      const top = dist < 48 ? -20 + r() * 16 : -12 + r() * 44
-      const h = top + 70
-      r() // (was the window-texture pick; still drawn so the skyline stays the same)
-      parts.push(box(w, h, d, x, top - h / 2, z, (r() - 0.5) * 0.3))
-      if (top > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.6, z))
+      // mostly under the horizon so the sky stays open, with the odd tall one
+      const top = dist < 48 ? -22 + r() * 14 : r() < 0.12 ? 2 + r() * 12 : -16 + r() * 18
+      add(dist, x, z, 5 + r() * 9, 5 + r() * 9, top)
+    }
+    // the far skyline: a dense band of towers that the fog turns violet
+    for (let i = 0; i < 90; i++) {
+      const a = Math.PI * (-0.08 + r() * 1.16) + Math.PI
+      const dist = 120 + r() * 70
+      add(dist, Math.cos(a) * dist, Math.sin(a) * dist, 7 + r() * 12, 7 + r() * 12, r() < 0.15 ? 14 + r() * 16 : -8 + r() * 22)
     }
     // the building we're standing on, and the one carrying the big sign
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
     parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
-    parts.push(box(12, 60, 8, -18, -30, -40))
-    return { geometry: mergeGeometries(parts), beacons: mergeGeometries(lights) }
+    parts.push(box(12, 60, 8, -32, -30, -58))
+    return { geometry: mergeGeometries(parts.map((g) => g.toNonIndexed())), beacons: mergeGeometries(lights) }
   }, [])
 
   return (
@@ -110,7 +130,7 @@ function BigSign() {
   )
   const tint = useMemo(() => new Color('#ffffff').multiplyScalar(1.8), [])
   return (
-    <mesh position={[-13.5, 7, -35.95]}>
+    <mesh position={[-27.5, 7, -53.95]}>
       <planeGeometry args={[3, 10.8]} />
       <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
     </mesh>

@@ -1,6 +1,6 @@
 # web-home-portal
 
-The front door of byairu.com: a rooftop in Tokyo on a rainy night, where
+The front door of byairu.com: a Tokyo rooftop on a drizzly night, where
 Airu's tabby cat (the same rigged model as in [web-3d-project](../web-3d-project)
 and [web-3d-island](../web-3d-island)) walks between two portals.
 
@@ -11,15 +11,17 @@ Walk through one (or press **E**, or use the sign's button) and the cat spins
 into it, the screen washes over in the portal's colour, and the browser goes
 to that site.
 
-Wet concrete with puddles that mirror the neon, light rain, a vending machine,
-festoon bulbs, and the city below fading into haze. The HUD borrows from
+Illustrated-skyline palette: an indigo-to-magenta sky with stars and a
+crescent moon, a city in layers that fade to violet with distance (cyan and
+orange windows, glass facades, antenna spires, blinking beacons), a tiled
+balcony with a railing, wet tiles catching the neon, and light rain. The HUD borrows from
 Tokyo station signs: navy plates, Japanese over English, a line marker per
 portal (D and P).
 
 Rendered with three.js `WebGPURenderer` through React Three Fiber. Browsers
 without WebGPU fall back to its WebGL 2 backend automatically; every custom
-effect (sky, puddle reflections with rain ripples, the lens bokeh, bloom, the
-cat's outline) is written in TSL so it runs on both. Everything except the cat
+effect (sky with stars and moon, the city's windows, the lens bokeh, bloom,
+the cat's outline) is written in TSL so it runs on both. Everything except the cat
 is procedural.
 
 ## Run it
@@ -45,14 +47,14 @@ the platform sign's button) opens the site in a new tab without the warp.
 
 ## Quality
 
-Phones get a lighter version: no puddle reflections and less rain. Force
-either with `?quality=low` or `?quality=high`.
+Phones get a lighter version: lower resolution and less rain. Force either
+with `?quality=low` or `?quality=high`.
 
 Kept light on purpose: the whole city (and the building under the roof) is one
 merged mesh whose windows are drawn in the shader, the parapet and festoon are
 merged too, there's no shadow pass (a blob shadow grounds the cat), and FXAA
-replaces MSAA. That's about 120 draw calls a frame including the puddle
-reflection pass, down from ~900. If the frame rate still drops under ~50, the
+replaces MSAA. That's about 65 draw calls a frame, down from ~900 in the
+first night version. If the frame rate still drops under ~50, the
 pixel ratio steps down (never below 1). Add `?stats` to see fps, pixel ratio,
 draw calls and which backend (WebGPU or WebGL 2) is running.
 
@@ -84,8 +86,8 @@ src/
     Cat.jsx           the rigged cat, its clips, spin / jump / warp
     FollowCamera.jsx  third-person camera, wider on phones
     Portal.jsx        sign, floor glow, DevGate (code door), Aperture (lens)
-    Rooftop.jsx       wet slab + reflector, parapet, vending machine, AC, tank
-    City.jsx          one merged mesh with shader windows, beacons, the アイル sign
+    Rooftop.jsx       tiled balcony, railing, vending machine, AC, tank, stairwell
+    City.jsx          layered skyline as one mesh with shader windows, spires, beacons, アイル sign
     Sky.jsx, Rain.jsx
 ```
 

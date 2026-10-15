@@ -1,11 +1,9 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { BoxGeometry, CatmullRomCurve3, Color, CylinderGeometry, MeshStandardNodeMaterial, SphereGeometry, TubeGeometry, Vector3 } from 'three/webgpu'
-import { color, float, mx_noise_float, positionWorld, reflector, texture, time, vec2, vec3 } from 'three/tsl'
+import { BoxGeometry, Color, CylinderGeometry } from 'three/webgpu'
 import { ROOF } from '../config.js'
 import { AC_UNITS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
-import { QUALITY } from '../quality.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
@@ -15,128 +13,30 @@ const CZ = (ROOF.front + ROOF.back) / 2
 
 const glow = (hex, k) => new Color(hex).multiplyScalar(k)
 
-// Concrete slab after rain: panel seams, stains, darker wet patches, and
-// puddles cut out of it (alpha) so the mirror underneath shows through.
-function concreteTextures() {
-  const PX = 64 // pixels per metre
+// Square floor tiles with dark grout, a few slightly off in tone like real
+// balcony tiles. Flat colours to match the illustrated skyline.
+function tileTexture() {
+  const PX = 48 // pixels per metre
   const w = W * PX
   const h = D * PX
-  const r = rng(11)
-  const puddles = Array.from({ length: 9 }, () => {
-    const x = r() * w
-    const y = r() * h
-    return { x, y, rx: (0.5 + r() * 1.3) * PX, ry: (0.35 + r() * 0.7) * PX, a: r() * Math.PI }
+  return canvasTexture(w, h, (ctx) => {
+    ctx.fillStyle = '#231d3f'
+    ctx.fillRect(0, 0, w, h)
+    const r = rng(11)
+    const T = PX // 1 m tiles
+    for (let y = 0; y < h; y += T) {
+      for (let x = 0; x < w; x += T) {
+        const k = r()
+        ctx.fillStyle = k < 0.08 ? '#3e3566' : k < 0.2 ? '#352d5a' : '#393160'
+        ctx.fillRect(x + 2, y + 2, T - 4, T - 4)
+      }
+    }
   })
-  // keep the middle and the portal pads mostly dry-ish: shove a few puddles there anyway for reflections
-  // and a few where the neon will land in them: in front of each portal and mid-roof
-  puddles.push({ x: w / 2 + 0.6 * PX, y: h * 0.58, rx: 1.9 * PX, ry: 0.7 * PX, a: 0.12 })
-  puddles.push({ x: w * 0.26, y: h * 0.36, rx: 1.3 * PX, ry: 0.6 * PX, a: 0.5 })
-  puddles.push({ x: w * 0.74, y: h * 0.37, rx: 1.4 * PX, ry: 0.55 * PX, a: -0.4 })
-
-  const blob = (ctx, p, grow = 1) => {
-    ctx.beginPath()
-    ctx.ellipse(p.x, p.y, p.rx * grow, p.ry * grow, p.a, 0, Math.PI * 2)
-  }
-
-  const map = canvasTexture(
-    w,
-    h,
-    (ctx) => {
-      ctx.fillStyle = '#4a4e57'
-      ctx.fillRect(0, 0, w, h)
-      // grain
-      const g = rng(5)
-      for (let i = 0; i < 9000; i++) {
-        const v = 60 + g() * 40
-        ctx.fillStyle = `rgba(${v},${v + 2},${v + 8},0.25)`
-        ctx.fillRect(g() * w, g() * h, 2, 2)
-      }
-      // stains
-      for (let i = 0; i < 40; i++) {
-        const x = g() * w
-        const y = g() * h
-        const rad = (0.5 + g() * 2.5) * PX
-        const grad = ctx.createRadialGradient(x, y, 0, x, y, rad)
-        grad.addColorStop(0, 'rgba(20,22,30,0.35)')
-        grad.addColorStop(1, 'rgba(20,22,30,0)')
-        ctx.fillStyle = grad
-        ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2)
-      }
-      // panel seams every 3 m
-      ctx.strokeStyle = 'rgba(15,16,22,0.8)'
-      ctx.lineWidth = 3
-      for (let x = 0; x <= w; x += 3 * PX) {
-        ctx.beginPath()
-        ctx.moveTo(x, 0)
-        ctx.lineTo(x, h)
-        ctx.stroke()
-      }
-      for (let y = 0; y <= h; y += 3 * PX) {
-        ctx.beginPath()
-        ctx.moveTo(0, y)
-        ctx.lineTo(w, y)
-        ctx.stroke()
-      }
-      // wet rims round each puddle
-      for (const p of puddles) {
-        ctx.fillStyle = 'rgba(18,20,28,0.55)'
-        blob(ctx, p, 1.35)
-        ctx.fill()
-      }
-      // the puddles themselves: transparent
-      ctx.globalCompositeOperation = 'destination-out'
-      for (const p of puddles) {
-        blob(ctx, p)
-        ctx.fill()
-      }
-      ctx.globalCompositeOperation = 'source-over'
-    },
-  )
-  // Puddles and wet patches are glossy, dry concrete is matte
-  const rough = canvasTexture(
-    w / 4,
-    h / 4,
-    (ctx) => {
-      ctx.fillStyle = '#d0d0d0'
-      ctx.fillRect(0, 0, w / 4, h / 4)
-      ctx.scale(0.25, 0.25)
-      ctx.fillStyle = '#404040'
-      for (const p of puddles) {
-        blob(ctx, p, 1.4)
-        ctx.fill()
-      }
-    },
-    { color: false },
-  )
-  return { map, rough }
 }
 
 export default function Rooftop() {
   const gl = useThree((s) => s.gl)
-  const { map, rough } = useMemo(concreteTextures, [])
-
-  // One material for the slab: concrete where it's dry, a mirror of the scene
-  // (screen-space reflector) in the puddles, and a faint sheen of it on the
-  // wet concrete. Raindrop ripples wobble the reflection.
-  const { floor, target } = useMemo(() => {
-    const m = new MeshStandardNodeMaterial({ roughnessMap: rough, roughness: 1, metalness: 0.05 })
-    const concrete = texture(map)
-    const wet = concrete.a.oneMinus() // 1 inside a puddle
-    m.colorNode = concrete.rgb.mul(concrete.a)
-    if (!QUALITY.reflections) {
-      // No mirror on phones: puddles get a dim night-sky tint instead of going black
-      m.emissiveNode = color('#2a2550').mul(wet.mul(0.9))
-      return { floor: m, target: null }
-    }
-    const mirror = reflector({ resolutionScale: 0.4 })
-    mirror.target.rotateX(-Math.PI / 2)
-    const p = positionWorld.xz.mul(6)
-    const n = mx_noise_float(vec3(p, time.mul(1.7)))
-    const ripple = vec2(n, n.mul(-0.7)) // one noise lookup, skewed, reads as ripples just as well
-    mirror.uvNode = mirror.uvNode.add(ripple.mul(wet.mul(0.006).add(0.002)))
-    m.emissiveNode = mirror.rgb.mul(vec3(0.62, 0.66, 0.78)).mul(wet.mul(0.85).add(float(0.1)))
-    return { floor: m, target: mirror.target }
-  }, [map, rough])
+  const map = useMemo(tileTexture, [])
 
   const onGround = (e) => {
     if (e.delta > 8) return
@@ -147,17 +47,17 @@ export default function Rooftop() {
 
   return (
     <group>
-      {target && <primitive object={target} />}
       <mesh
         rotation-x={-Math.PI / 2}
         position={[0, 0, CZ]}
-        material={floor}
        
         onClick={onGround}
         onPointerOver={cursor('pointer')}
         onPointerOut={cursor('')}
       >
         <planeGeometry args={[W, D]} />
+        {/* rain-wet tiles: glossy enough to catch the neon */}
+        <meshStandardMaterial map={map} roughness={0.38} metalness={0.15} />
       </mesh>
 
       <Parapet />
@@ -167,7 +67,6 @@ export default function Rooftop() {
       ))}
       <WaterTank position={[TANK[0], 0, TANK[1]]} />
       <Stairwell position={[SHED[0], 0, SHED[1]]} />
-      <Festoon />
     </group>
   )
 }
@@ -186,8 +85,8 @@ function Parapet() {
       at(new BoxGeometry(W + T * 2, 0.24, T), 0, 0.12, ROOF.front + T / 2),
     ])
     const spots = []
-    for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 1.5) spots.push([x, ROOF.back - T / 2])
-    for (let z = ROOF.back + 1.5; z <= ROOF.front; z += 1.5) spots.push([-ROOF.x - T / 2, z], [ROOF.x + T / 2, z])
+    for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 0.5) spots.push([x, ROOF.back - T / 2])
+    for (let z = ROOF.back + 0.5; z <= ROOF.front; z += 0.5) spots.push([-ROOF.x - T / 2, z], [ROOF.x + T / 2, z])
     const posts = mergeGeometries(spots.map(([x, z]) => at(new CylinderGeometry(0.025, 0.025, 1, 6), x, H + 0.5, z)))
     const rail = (len) => new CylinderGeometry(0.035, 0.035, len, 6).rotateZ(Math.PI / 2)
     const rails = mergeGeometries([
@@ -200,13 +99,13 @@ function Parapet() {
   return (
     <group>
       <mesh geometry={walls}>
-        <meshStandardMaterial color="#3b3f4a" roughness={0.85} />
+        <meshStandardMaterial color="#2e2650" roughness={0.85} />
       </mesh>
       <mesh geometry={posts}>
-        <meshStandardMaterial color="#6d7380" metalness={0.8} roughness={0.35} />
+        <meshStandardMaterial color="#4a3f7a" metalness={0.6} roughness={0.4} />
       </mesh>
       <mesh geometry={rails}>
-        <meshStandardMaterial color="#7a808d" metalness={0.8} roughness={0.3} />
+        <meshStandardMaterial color="#c75a9a" emissive="#c75a9a" emissiveIntensity={0.35} metalness={0.6} roughness={0.35} />
       </mesh>
     </group>
   )
@@ -345,35 +244,6 @@ function Stairwell(props) {
         <boxGeometry args={[0.7, 0.06, 0.08]} />
         <meshBasicMaterial color={glow('#eaf4ff', 3)} toneMapped={false} />
       </mesh>
-    </group>
-  )
-}
-
-// A string of warm bulbs along the back of the roof, for a bit of warmth
-// against the blue. Bulbs and wire are one mesh each.
-function Festoon() {
-  const { bulbs, wire, mid } = useMemo(() => {
-    const a = [-10.4, 3.5, -8.3]
-    const b = [10.4, 3.5, -8.3]
-    const n = 14
-    const pts = []
-    for (let i = 0; i <= n; i++) {
-      const t = i / n
-      pts.push(new Vector3(a[0] + (b[0] - a[0]) * t, a[1] - Math.sin(t * Math.PI) * 0.7, a[2]))
-    }
-    const bulbs = mergeGeometries(pts.map((p) => new SphereGeometry(0.07, 8, 6).translate(p.x, p.y, p.z)))
-    const wire = new TubeGeometry(new CatmullRomCurve3(pts.map((p) => p.clone().setY(p.y + 0.06))), 64, 0.008, 4)
-    return { bulbs, wire, mid: pts[n >> 1] }
-  }, [])
-  return (
-    <group>
-      <mesh geometry={bulbs}>
-        <meshBasicMaterial color={glow('#ffc46b', 2.6)} toneMapped={false} />
-      </mesh>
-      <mesh geometry={wire}>
-        <meshBasicMaterial color="#111" />
-      </mesh>
-      <pointLight position={[mid.x, mid.y - 0.3, mid.z + 1]} color="#ffb85c" intensity={4} distance={10} decay={1.5} />
     </group>
   )
 }

@@ -6,7 +6,8 @@ import { reducedMotion } from '../portal-nav.js'
 import { player } from '../store.js'
 import { rng } from './canvasTexture.js'
 
-// Light rain: short streaks falling at a slant in a box that follows the cat
+// Light rain: thin lavender streaks falling at a slant in a box that follows
+// the cat, so the camera always looks through it. One draw call.
 const BOX = { x: 16, y: 14, z: 14 }
 const FALL = 13 // m/s
 const LEN = 0.45
@@ -27,18 +28,19 @@ export default function Rain() {
     const speed = reducedMotion ? 0.3 : 1
     const pos = geometry.attributes.position.array
     const cx = player.pos.x
-    const cz = player.pos.z - 2
+    const cz = player.pos.z - 3
+    const wrap = (v, c, half) => ((((v + c + half) % (half * 2)) + half * 2) % (half * 2)) - half + c
     for (let i = 0; i < drops.length; i++) {
       const d = drops[i]
-      d[1] -= FALL * d[3] * dt * speed
-      d[0] += FALL * d[3] * dt * speed * WIND
+      const step = FALL * d[3] * dt * speed
+      d[1] -= step
+      d[0] += step * WIND
       if (d[1] < 0) {
         d[1] += BOX.y
         d[0] -= BOX.y * WIND
       }
-      // wrap round the cat so the rain always surrounds the camera's view
-      const x = ((((d[0] + cx + BOX.x) % (BOX.x * 2)) + BOX.x * 2) % (BOX.x * 2)) - BOX.x + cx
-      const z = ((((d[2] + cz + BOX.z) % (BOX.z * 2)) + BOX.z * 2) % (BOX.z * 2)) - BOX.z + cz
+      const x = wrap(d[0], cx, BOX.x)
+      const z = wrap(d[2], cz, BOX.z)
       const o = i * 6
       pos[o] = x
       pos[o + 1] = d[1]
@@ -52,7 +54,7 @@ export default function Rain() {
 
   return (
     <lineSegments geometry={geometry} frustumCulled={false}>
-      <lineBasicMaterial color="#a9bde0" transparent opacity={0.28} depthWrite={false} />
+      <lineBasicMaterial color="#cdbfff" transparent opacity={0.32} depthWrite={false} />
     </lineSegments>
   )
 }

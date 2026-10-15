@@ -18,8 +18,8 @@ export default function FollowCamera() {
     st.t += dt
     const intro = 1 - (1 - Math.min(1, st.t / 2.4)) ** 3
     const portrait = state.size.width < state.size.height * 0.9
-    const back = portrait ? 17 : 10
-    const up = portrait ? 9.5 : 5.6
+    const back = portrait ? 15 : 10.5
+    const up = portrait ? 7 : 5.2
     // a wider lens on phones so both portals stay in frame
     const fov = portrait ? 56 : 45
     if (cam.fov !== fov) {
@@ -29,7 +29,7 @@ export default function FollowCamera() {
     const p = player.pos
 
     want.set(p.x * 0.9, up + (1 - intro) * 9, p.z + back + (1 - intro) * 8)
-    let lookZ = p.z - 2
+    let lookZ = p.z - 6
     if (player.leaving >= 0 && player.portal) {
       // lean in towards the portal as we go through
       const k = Math.min(1, player.leaving / 1.2)
@@ -44,7 +44,7 @@ export default function FollowCamera() {
     cam.position.y = MathUtils.damp(cam.position.y, want.y, 4, dt)
     cam.position.z = MathUtils.damp(cam.position.z, want.z, 4, dt)
     look.x = MathUtils.damp(look.x, p.x * 0.95, 6, dt)
-    look.y = MathUtils.damp(look.y, 1.4, 6, dt)
+    look.y = MathUtils.damp(look.y, portrait ? 2.6 : 3.0, 6, dt)
     look.z = MathUtils.damp(look.z, lookZ, 6, dt)
     cam.lookAt(look)
   })

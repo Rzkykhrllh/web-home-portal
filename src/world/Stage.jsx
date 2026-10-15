@@ -23,7 +23,7 @@ export default function Stage() {
       className="stage"
       gl={createRenderer}
       dpr={QUALITY.dpr}
-      camera={{ fov: 45, near: 0.1, far: 400, position: [0, 14, 22] }}
+      camera={{ fov: 45, near: 0.1, far: 600, position: [0, 14, 22] }}
       onCreated={({ gl }) => {
         gl.domElement.addEventListener('webglcontextlost', () => uiStore.set({ failed: true }))
         gl.backend?.device?.lost?.then(() => uiStore.set({ failed: true }))
