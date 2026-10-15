@@ -1,5 +1,6 @@
 import { player, uiStore } from './store.js'
 import { fromLocal } from './layout.js'
+import { fadeOutSound, restoreSound } from './audio.js'
 
 export const reducedMotion =
   typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -14,6 +15,7 @@ export function enterPortal(p) {
   player.portal = p
   player.path = []
   uiStore.set({ leaving: p, near: p })
+  fadeOutSound(reducedMotion ? 0.15 : 1.1)
   timer = setTimeout(() => window.location.assign(p.url), reducedMotion ? 150 : 1250)
 }
 
@@ -43,4 +45,5 @@ export function resetAfterBack() {
     player.pos.set(x, 0, z)
   }
   uiStore.set({ leaving: null, near: null })
+  restoreSound()
 }

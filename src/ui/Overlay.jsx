@@ -1,8 +1,9 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { PORTALS } from '../config.js'
 import { enterPortal } from '../portal-nav.js'
 import { input, player, useUi } from '../store.js'
 import { jump } from '../input.js'
+import { setSound } from '../audio.js'
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const hostOf = (url) => new URL(url).host.replace(/^www\./, '')
@@ -49,6 +50,7 @@ export default function Overlay() {
               <span className="line-en">{p.title}</span>
             </a>
           ))}
+          <SoundToggle />
         </nav>
       </header>
 
@@ -167,5 +169,57 @@ function TouchControls() {
         </svg>
       </button>
     </>
+  )
+}
+
+const SOUND_KEY = 'portal-sound'
+const readPref = () => {
+  try {
+    return localStorage.getItem(SOUND_KEY) === 'on'
+  } catch {
+    return false
+  }
+}
+
+// Rain and lofi. Off by default; if it was on last visit, it comes back on
+// with the first click or key press (browsers block audio before that).
+function SoundToggle() {
+  const [on, setOn] = useState(false)
+  useEffect(() => {
+    if (!readPref()) return
+    const wake = () => {
+      setOn(true)
+      setSound(true)
+    }
+    window.addEventListener('pointerdown', wake, { once: true })
+    window.addEventListener('keydown', wake, { once: true })
+    return () => {
+      window.removeEventListener('pointerdown', wake)
+      window.removeEventListener('keydown', wake)
+    }
+  }, [])
+  const toggle = (e) => {
+    e.stopPropagation()
+    const next = !on
+    setOn(next)
+    setSound(next)
+    try {
+      localStorage.setItem(SOUND_KEY, next ? 'on' : 'off')
+    } catch {
+      /* private mode: just don't remember */
+    }
+  }
+  return (
+    <button className="sound" onClick={toggle} onPointerDown={(e) => e.stopPropagation()} aria-pressed={on}>
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+        <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
+        {on ? (
+          <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        ) : (
+          <path d="M16.5 9.5l5 5M21.5 9.5l-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+        )}
+      </svg>
+      <span>{on ? 'Rain and lofi on' : 'Sound off'}</span>
+    </button>
   )
 }

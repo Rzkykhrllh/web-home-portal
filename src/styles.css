@@ -152,6 +152,31 @@ button:focus-visible {
   font-size: 1.5rem;
 }
 
+/* --- Sound toggle (under the line links) --- */
+.sound {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--plate);
+  color: var(--ink-soft);
+  border: 0;
+  border-left: 1px solid var(--rule);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
+  transition: color 150ms ease, background 150ms ease;
+}
+.sound:hover {
+  background: #2c2260;
+  color: var(--ink);
+}
+.sound[aria-pressed='true'] {
+  color: var(--ink);
+}
+
 /* --- Platform sign (the portal card) --- */
 .platform {
   position: fixed;
@@ -394,6 +419,12 @@ kbd {
   }
   .line-link .line-en {
     display: none;
+  }
+  .lines {
+    flex-wrap: wrap;
+  }
+  .sound {
+    flex-basis: 100%;
   }
 }
 

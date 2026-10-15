@@ -58,6 +58,22 @@ first night version. If the frame rate still drops under ~50, the
 pixel ratio steps down (never below 1). Add `?stats` to see fps, pixel ratio,
 draw calls and which backend (WebGPU or WebGL 2) is running.
 
+## Sound
+
+The button under the line signs turns on rain and a lofi loop. Both are
+synthesised with Web Audio in `src/audio.js`, so there are no audio files to
+load or license:
+
+- rain: a filtered-noise bed, close drops pattering around you in stereo, and
+  now and then a drop pinging off the railing
+- lofi at 76 BPM: Fmaj9, Em7, Dm9, Cmaj9 on a soft electric piano, round
+  bass, a swung boom-bap kit with a lazy snare, a sparse pentatonic melody
+  through a tape echo, vinyl crackle, and a slow tape wobble on the pitch
+
+It's off by default (browsers block audio before a click). Once turned on it's
+remembered, and comes back with the first click or key press next visit. It
+fades out with the portal warp and pauses while the tab is hidden.
+
 ## Changing the portals
 
 `src/config.js` holds both portals: title, blurb, URL and colours. The URLs can
@@ -77,7 +93,8 @@ src/
   store.js            per-frame player state + tiny store for the overlay
   input.js            keyboard (walk, jump, spin, E to enter)
   portal-nav.js       walk-to-portal, warp out and navigate, reset on Back
-  ui/Overlay.jsx      name board, line links, platform sign, touch stick, loader
+  audio.js            synthesised rain + lofi loop
+  ui/Overlay.jsx      name board, line links, sound toggle, platform sign, touch stick, loader
   world/
     Stage.jsx         <Canvas> with WebGPURenderer (lazy-loaded)
     Effects.jsx       RenderPipeline: bloom + FXAA
