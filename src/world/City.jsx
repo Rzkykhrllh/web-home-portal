@@ -85,7 +85,7 @@ export default function City() {
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
     parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
-    parts.push(box(12, 60, 8, -32, -30, -58))
+    parts.push(box(12, 60, 8, -13, -30, -58))
     return { geometry: mergeGeometries(parts.map((g) => g.toNonIndexed())), beacons: mergeGeometries(lights) }
   }, [])
 
@@ -130,7 +130,7 @@ function BigSign() {
   )
   const tint = useMemo(() => new Color('#ffffff').multiplyScalar(1.8), [])
   return (
-    <mesh position={[-27.5, 7, -53.95]}>
+    <mesh position={[-8.5, 7, -53.95]}>
       <planeGeometry args={[3, 10.8]} />
       <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
     </mesh>

@@ -18,10 +18,10 @@ export default function FollowCamera() {
     st.t += dt
     const intro = 1 - (1 - Math.min(1, st.t / 2.4)) ** 3
     const portrait = state.size.width < state.size.height * 0.9
-    const back = portrait ? 15 : 10.5
-    const up = portrait ? 7 : 5.2
+    const back = portrait ? 18 : 10.5
+    const up = portrait ? 8.5 : 5.2
     // a wider lens on phones so both portals stay in frame
-    const fov = portrait ? 56 : 45
+    const fov = portrait ? 64 : 45
     if (cam.fov !== fov) {
       cam.fov = fov
       cam.updateProjectionMatrix()

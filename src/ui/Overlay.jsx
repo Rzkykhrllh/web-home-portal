@@ -17,9 +17,9 @@ function warpClick(p) {
   }
 }
 
-// Line marker, as on Tokyo station signs: a coloured ring with the line's letter
-const Line = ({ p, big }) => (
-  <span className={`line line-${p.id} ${big ? 'line-big' : ''}`} aria-hidden="true">
+// The portal's letter in a ring of its neon colour
+const Mark = ({ p }) => (
+  <span className={`mark mark-${p.id}`} aria-hidden="true">
     {p.line}
   </span>
 )
@@ -32,44 +32,44 @@ export default function Overlay() {
 
   return (
     <>
-      <header className="top">
-        <div className="nameboard">
+      {/* darkens the top and bottom edges a touch, like a film frame, so text reads over the city */}
+      <div className="vignette" aria-hidden="true" />
+      <header className={`top ${loaded ? 'in' : ''}`}>
+        <div className="title">
           <p className="kana" lang="ja">
             アイル
           </p>
           <h1>Airu</h1>
-          <p className="role">Software engineer and photographer in Tokyo</p>
+          <p className="role">Software engineer and photographer, Tokyo</p>
         </div>
-        <nav className="lines" aria-label="Go straight to">
+        <nav className="tags" aria-label="Go straight to">
           {PORTALS.map((p) => (
-            <a key={p.id} href={p.url} className="line-link" onClick={warpClick(p)}>
-              <Line p={p} />
-              <span className="line-jp" lang="ja">
+            <a key={p.id} href={p.url} className={`tag tag-${p.id}`} onClick={warpClick(p)}>
+              <Mark p={p} />
+              <span className="tag-jp" lang="ja">
                 {p.jp}
               </span>
-              <span className="line-en">{p.title}</span>
+              <span className="tag-en">{p.title}</span>
             </a>
           ))}
-          <SoundToggle />
         </nav>
       </header>
 
+      {loaded && !leaving && <NowPlaying />}
+
       {near && !leaving && (
-        <aside className={`platform platform-${near.id}`} aria-live="polite">
-          <div className="platform-head">
-            <Line p={near} big />
-            <div>
-              <p className="platform-jp" lang="ja">
-                {near.jp}
-              </p>
-              <h2>{near.title}</h2>
-            </div>
+        <aside className={`card card-${near.id}`} aria-live="polite">
+          <div className="card-head">
+            <p className="card-jp" lang="ja">
+              {near.jp}
+            </p>
+            <h2>{near.title}</h2>
           </div>
-          <p className="platform-blurb">{near.blurb}</p>
-          <a className="platform-go" href={near.url} onClick={warpClick(near)}>
-            Go to {hostOf(near.url)}
+          <p className="card-blurb">{near.blurb}</p>
+          <a className="card-go" href={near.url} onClick={warpClick(near)}>
+            Enter {hostOf(near.url)}
           </a>
-          <p className="platform-hint">{coarse ? 'Or walk through' : 'Or walk through, or press E'}</p>
+          <p className="card-hint">{coarse ? 'Or walk through the portal' : 'Or walk through the portal, or press E'}</p>
         </aside>
       )}
 
@@ -82,7 +82,7 @@ export default function Overlay() {
               <kbd>W</kbd>
               <kbd>A</kbd>
               <kbd>S</kbd>
-              <kbd>D</kbd> to walk, <kbd>Space</kbd> to jump, or click where to go
+              <kbd>D</kbd> walk <span className="sep" /> <kbd>Space</kbd> jump <span className="sep" /> click to go
             </>
           )}
         </p>
@@ -91,21 +91,23 @@ export default function Overlay() {
       {coarse && loaded && !leaving && <TouchControls />}
 
       <div className={`loader ${loaded || failed ? 'done' : ''}`} aria-hidden={loaded}>
-        <p lang="ja">まもなく</p>
-        <p className="loader-en">Heading up to the roof</p>
+        <p className="loader-jp" lang="ja">
+          屋上へ
+        </p>
+        <p className="loader-en">Taking the stairs to the roof</p>
       </div>
 
       {failed && (
         <main className="fallback">
-          <h2>Pick a line</h2>
+          <h2>Two doors</h2>
           <p>The 3D rooftop couldn't start on this device. Both sites are one tap away.</p>
           {PORTALS.map((p) => (
-            <a key={p.id} href={p.url} className="line-link">
-              <Line p={p} />
-              <span className="line-jp" lang="ja">
+            <a key={p.id} href={p.url} className={`tag tag-${p.id}`}>
+              <Mark p={p} />
+              <span className="tag-jp" lang="ja">
                 {p.jp}
               </span>
-              <span className="line-en">
+              <span className="tag-en">
                 {p.title}, {hostOf(p.url)}
               </span>
             </a>
@@ -181,9 +183,10 @@ const readPref = () => {
   }
 }
 
-// Rain and lofi. Off by default; if it was on last visit, it comes back on
-// with the first click or key press (browsers block audio before that).
-function SoundToggle() {
+// Rain and lofi, shown like the "now playing" corner of a lofi stream.
+// Off by default; if it was on last visit, it comes back on with the first
+// click or key press (browsers block audio before that).
+function NowPlaying() {
   const [on, setOn] = useState(false)
   useEffect(() => {
     if (!readPref()) return
@@ -210,16 +213,23 @@ function SoundToggle() {
     }
   }
   return (
-    <button className="sound" onClick={toggle} onPointerDown={(e) => e.stopPropagation()} aria-pressed={on}>
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-        <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
-        {on ? (
-          <path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        ) : (
-          <path d="M16.5 9.5l5 5M21.5 9.5l-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-        )}
-      </svg>
-      <span>{on ? 'Rain and lofi on' : 'Sound off'}</span>
+    <button
+      className={`playing ${on ? 'on' : ''}`}
+      onClick={toggle}
+      onPointerDown={(e) => e.stopPropagation()}
+      aria-pressed={on}
+      aria-label={on ? 'Turn sound off' : 'Turn on rain and lofi'}
+    >
+      <span className="eq" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+        <i />
+      </span>
+      <span className="playing-text">
+        <span className="playing-title">{on ? 'Rain on the roof' : 'Sound is off'}</span>
+        <span className="playing-sub">{on ? 'lofi, 76 bpm' : 'Tap for rain and lofi'}</span>
+      </span>
     </button>
   )
 }

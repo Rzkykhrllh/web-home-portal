@@ -14,9 +14,10 @@ to that site.
 Illustrated-skyline palette: an indigo-to-magenta sky with stars and a
 crescent moon, a city in layers that fade to violet with distance (cyan and
 orange windows, glass facades, antenna spires, blinking beacons), a tiled
-balcony with a railing, wet tiles catching the neon, and light rain. The HUD borrows from
-Tokyo station signs: navy plates, Japanese over English, a line marker per
-portal (D and P).
+balcony with a railing, wet tiles catching the neon, and light rain. The HUD sits in the same night: the name is set straight on the sky with a
+soft glow, the two portal links are thin glass tags edged in each portal's
+neon, sound is a lofi-stream style "now playing" corner, and the portal card
+is violet glass with a neon edge.
 
 Rendered with three.js `WebGPURenderer` through React Three Fiber. Browsers
 without WebGPU fall back to its WebGL 2 backend automatically; every custom
@@ -41,9 +42,9 @@ npm run build    # static site in dist/
 | Jump | Space | ⤒ button |
 | Spin | K / X, or click the cat | tap the cat |
 
-The two line signs at the top right are plain links that skip the walk, so a
+The two tags at the top right are plain links that skip the walk, so a
 recruiter in a hurry is one click away. Ctrl/Cmd-click on any of them (or on
-the platform sign's button) opens the site in a new tab without the warp.
+the portal card's button) opens the site in a new tab without the warp.
 
 ## Quality
 
@@ -60,7 +61,7 @@ draw calls and which backend (WebGPU or WebGL 2) is running.
 
 ## Sound
 
-The button under the line signs turns on rain and a lofi loop. Both are
+The "now playing" corner (bottom left; top right on phones) turns on rain and a lofi loop. Both are
 synthesised with Web Audio in `src/audio.js`, so there are no audio files to
 load or license:
 
@@ -94,7 +95,7 @@ src/
   input.js            keyboard (walk, jump, spin, E to enter)
   portal-nav.js       walk-to-portal, warp out and navigate, reset on Back
   audio.js            synthesised rain + lofi loop
-  ui/Overlay.jsx      name board, line links, sound toggle, platform sign, touch stick, loader
+  ui/Overlay.jsx      title, portal tags, now playing, portal card, touch stick, loader
   world/
     Stage.jsx         <Canvas> with WebGPURenderer (lazy-loaded)
     Effects.jsx       RenderPipeline: bloom + FXAA
