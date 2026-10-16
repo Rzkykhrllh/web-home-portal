@@ -138,7 +138,8 @@ export default function City() {
       <mesh geometry={geometry} material={cityMaterial} />
       <Beacons geometry={beacons} />
       <BigSign />
-      <Tower position={[-46, -60, 165]} />
+      {/* right of centre, behind the portals, next to the moon: in view from the start */}
+      <Tower position={[29, -40, -115]} scale={0.55} />
     </group>
   )
 }
@@ -182,9 +183,9 @@ function BigSign() {
   )
 }
 
-// A red-and-white lattice broadcast tower far off on the other side of the
-// city: you only see it in photo mode, turning round. Banded red and white by
-// day, floodlit orange at night; the lattice is cut out of a tapered shell.
+// A red-and-white lattice broadcast tower rising over the skyline behind the
+// portals. Banded red and white by day, floodlit orange at night; the lattice
+// is cut out of a tapered shell.
 function Tower(props) {
   const shell = useMemo(() => {
     const m = new MeshStandardNodeMaterial({ roughness: 0.6, side: DoubleSide, alphaTest: 0.5, transparent: false })

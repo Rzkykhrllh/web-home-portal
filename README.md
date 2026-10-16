@@ -13,7 +13,8 @@ to that site.
 
 Illustrated-skyline palette: an indigo-to-magenta sky with stars and a
 crescent moon, a city in layers that fade to violet with distance (cyan and
-orange windows, glass facades, antenna spires, blinking beacons), a tiled
+orange windows, glass facades, antenna spires, blinking beacons, and a
+red-and-white lattice tower beside the moon, floodlit at night), a tiled
 balcony with a railing, wet tiles catching the neon, and light rain. The HUD sits in the same night: the name is set straight on the sky with a
 soft glow, the two portal links are thin glass tags edged in each portal's
 neon, sound is a lofi-stream style "now playing" corner, and the portal card
@@ -89,8 +90,7 @@ press the shutter (or Space). The frame is saved as a PNG with a small
 caption: "frame by airu", the time and the weather. Esc to leave.
 
 The city goes all the way round for this: turn the camera and there's skyline
-behind you too, a red-and-white lattice broadcast tower in the distance
-(floodlit at night), and a bench and potted plants by the front railing.
+behind you too, and a bench and potted plants by the front railing.
 
 ## Also on the roof
 
