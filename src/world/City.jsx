@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshBasicNodeMaterial, MeshStandardNodeMaterial, PlaneGeometry, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, smoothstep, step, uv, vec2 } from 'three/tsl'
+import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, smoothstep, step, texture, uv, vec2 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { U } from './Atmosphere.jsx'
@@ -10,56 +10,69 @@ import { U } from './Atmosphere.jsx'
 // Lit windows, computed in the shader from world position instead of a
 // texture per building. That lets every building, plus the one under our
 // roof, share one material and one merged mesh: the whole city is a single
-// draw call.
+// draw call. Each building carries a seed that picks its facade: punched
+// windows, office ribbon windows or a glass curtain wall, at its own floor
+// height and window width, so no two read the same.
 export const cityMaterial = (() => {
   const m = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 })
   const n = normalWorld
+  const seed = attribute('bseed', 'float')
+  const plain = attribute('plain', 'float') // rooftop plant and sign frames: no windows
   const wall = step(abs(n.y), 0.5) // 1 on walls, 0 on roofs
   // distance along the wall, whichever way it faces
   const along = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
-  const cell = vec2(along.div(1.0), positionWorld.y.div(2.2))
+  const cellW = mix(0.75, 1.3, fract(seed.mul(7.13)))
+  const floorH = mix(1.8, 2.5, fract(seed.mul(13.31)))
+  const cell = vec2(along.div(cellW), positionWorld.y.div(floorH))
   const id = floor(cell)
   const f = fract(cell)
-  const pane = step(0.18, f.x).mul(step(f.x, 0.82)).mul(step(0.25, f.y)).mul(step(f.y, 0.75))
-  // whole floors tend to be lit or dark together, like real offices
+  const style = fract(seed.mul(3.71))
+  const punched = step(0.18, f.x).mul(step(f.x, 0.82)).mul(step(0.25, f.y)).mul(step(f.y, 0.75))
+  const ribbon = step(0.04, f.x).mul(step(0.3, f.y)).mul(step(f.y, 0.72))
+  const curtain = step(0.05, f.x).mul(step(f.x, 0.95)).mul(step(0.08, f.y)).mul(step(f.y, 0.92))
+  const isRibbon = step(0.5, style).mul(step(style, 0.78))
+  const pane = select(style.lessThan(0.5), punched, select(style.lessThan(0.78), ribbon, curtain)).mul(plain.oneMinus())
+  // whole floors tend to be lit or dark together, like real offices; ribbon
+  // windows light up in long runs
   const block = floor(along.div(9))
-  const floorLit = hash(id.y.mul(13.7).add(block.mul(71.3)))
-  const r = hash(id.x.mul(17.1).add(id.y.mul(311.7)))
-  const chance = mix(0.04, 0.6, step(0.45, floorLit)).add(step(0.8, floorLit).mul(0.15))
+  const floorLit = hash(id.y.mul(13.7).add(block.mul(71.3)).add(seed.mul(91.0)))
+  const rid = mix(id.x, floor(id.x.div(5)), isRibbon)
+  const r = hash(rid.mul(17.1).add(id.y.mul(311.7)).add(seed.mul(37.0)))
+  const busy = mix(0.45, 1.3, fract(seed.mul(29.7))) // some buildings are half empty
+  const chance = mix(0.04, 0.6, step(0.45, floorLit)).add(step(0.8, floorLit).mul(0.15)).mul(busy)
   const lit = step(r, chance).mul(pane).mul(wall)
-  // mostly warm yellow and orange against the blue, with some cool white offices
-  const k = hash(id.x.add(id.y.mul(7.3)).add(3.1))
-  const tint = select(k.lessThan(0.45), color('#ffd27a'), select(k.lessThan(0.72), color('#ffa860'), color('#d8e6ff')))
+  // mostly warm yellow and orange against the blue; glass towers run cool white
+  const k = hash(id.x.add(id.y.mul(7.3)).add(3.1).add(seed))
+  const warm = select(k.lessThan(0.55), color('#ffd27a'), color('#ffa860'))
+  const tint = select(style.greaterThan(0.78), mix(color('#d8e6ff'), warm, step(0.75, k)), select(k.lessThan(0.85), warm, color('#d8e6ff')))
   const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.6).add(0.4)
-  // some facades are lit glass: vertical cyan stripes over the whole wall
-  const glassy = step(0.9, hash(block.mul(3.7).add(floor(positionWorld.y.div(60)))))
-  const stripe = step(fract(along.mul(0.5)), 0.12).mul(glassy).mul(wall).mul(0.5)
-  // Night: deep indigo near, lighter violet far (colours follow the hour, see Atmosphere)
+  // Night: deep blue near, lighter far (colours follow the hour, see Atmosphere)
   const dist = positionWorld.xz.length()
   const nightBody = mix(U.near, U.far, smoothstep(40, 170, dist))
-  const nightCol = mix(nightBody.mul(0.8), nightBody, wall)
+  // curtain walls read a touch lighter and bluer than masonry
+  const nightWall = mix(nightBody, nightBody.mul(1.25).add(color('#0a1a3a').mul(0.3)), step(0.78, style))
+  const nightCol = mix(nightBody.mul(0.8), nightWall, wall)
 
-  // Day: each building its own pastel (one seed per building, baked into the
-  // mesh), fading into the haze with distance, and glass that reflects the sky
-  const seed = attribute('bseed', 'float')
+  // Day: each building its own pastel, fading into the haze with distance,
+  // and glass that reflects the sky
   const pastel = select(
     seed.lessThan(0.16),
     color('#dccfb9'),
     select(seed.lessThan(0.32), color('#b9c8de'), select(seed.lessThan(0.46), color('#86a2cc'), select(seed.lessThan(0.6), color('#e8e4dc'), select(seed.lessThan(0.72), color('#a7b3c6'), select(seed.lessThan(0.84), color('#d6bfb2'), color('#9db7d8')))))),
   )
   const dayBody = mix(pastel, U.far, smoothstep(50, 190, dist).mul(0.75))
-  // sky in the glass: bands of blue to near-white running up the facade, and the odd bright glint
   const sky = mix(color('#3f78cc'), color('#cfe3ff'), fract(positionWorld.y.div(31).add(seed.mul(5))))
   const glint = step(0.94, r).mul(0.6)
-  const glassTower = step(0.78, seed) // a few towers are glass all over
+  const glassTower = step(0.78, style).mul(plain.oneMinus())
   const glass = mix(pane.mul(0.8), 1, glassTower).mul(wall)
   const glassCol = mix(sky, color('#ffffff'), glint)
   const dayCol = mix(dayBody.mul(0.86), mix(dayBody, glassCol, glass), wall)
 
   m.colorNode = mix(nightCol, dayCol, U.day)
-  // night: lit windows; day: the reflections stay bright whatever the light
-  const windowsGlow = tint.mul(lit.mul(level).mul(U.windows).add(stripe.mul(mix(0.25, 1, U.windows))))
-  m.emissiveNode = windowsGlow.mul(1.15).add(glassCol.mul(glass).mul(U.day).mul(0.3))
+  // the streets below glow orange and light the lower floors from underneath
+  const street = color('#ff8a4a').mul(smoothstep(8, 45, positionWorld.y.negate())).mul(wall).mul(0.22).mul(U.windows)
+  const windowsGlow = tint.mul(lit.mul(level).mul(U.windows))
+  m.emissiveNode = windowsGlow.mul(1.15).add(street).add(glassCol.mul(glass).mul(U.day).mul(0.3))
   return m
 })()
 
@@ -69,23 +82,152 @@ const box = (w, h, d, x, y, z, rot = 0) => {
   return g
 }
 
-// The city round the roof: a near ring of blocks, a dense far skyline fading
-// to violet, antenna spires and red aircraft beacons. Plus one big sign.
+// Shop signs and rooftop billboards, all on one atlas. Top half: eight
+// vertical blade signs; bottom half: four billboards.
+const BLADES = [
+  ['カラオケ', '#ff5aa8'],
+  ['ラーメン', '#ff4a3a'],
+  ['居酒屋', '#ffa040'],
+  ['ホテル', '#5ad8ff'],
+  ['薬', '#5aff9a'],
+  ['珈琲', '#ffe0b0'],
+  ['歯科', '#7aa8ff'],
+  ['焼肉', '#ffcc40'],
+]
+function signAtlas() {
+  return canvasTexture(1024, 1024, (ctx) => {
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    BLADES.forEach(([word, c], i) => {
+      const x = i * 128
+      ctx.fillStyle = '#0c0a12'
+      ctx.fillRect(x, 0, 128, 512)
+      ctx.strokeStyle = c
+      ctx.lineWidth = 5
+      ctx.strokeRect(x + 8, 8, 112, 496)
+      ctx.fillStyle = '#fff6fa'
+      ctx.shadowColor = c
+      ctx.shadowBlur = 14
+      const chars = [...word]
+      const size = chars.length === 1 ? 110 : Math.min(100, 440 / chars.length)
+      ctx.font = `900 ${size}px ${SANS}`
+      chars.forEach((ch, j) => ctx.fillText(ch, x + 64, 256 + (j - (chars.length - 1) / 2) * size * 1.08))
+      ctx.shadowBlur = 0
+    })
+    // billboards: two lit text boards and two soft colour ads
+    const boards = [
+      (x, y) => {
+        ctx.fillStyle = '#10204a'
+        ctx.fillRect(x, y, 512, 256)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `900 120px ${SANS}`
+        ctx.fillText('24時間', x + 256, y + 110)
+        ctx.font = `700 40px ${SANS}`
+        ctx.fillStyle = '#7ad0ff'
+        ctx.fillText('OPEN ALL NIGHT', x + 256, y + 200)
+      },
+      (x, y) => {
+        const g = ctx.createLinearGradient(x, y, x + 512, y + 256)
+        g.addColorStop(0, '#ff6aa0')
+        g.addColorStop(1, '#ffb05a')
+        ctx.fillStyle = g
+        ctx.fillRect(x, y, 512, 256)
+        ctx.fillStyle = 'rgba(255,240,230,0.55)'
+        ctx.beginPath()
+        ctx.arc(x + 380, y + 128, 90, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.fillStyle = '#2a0a20'
+        ctx.font = `900 72px ${SANS}`
+        ctx.fillText('新発売', x + 160, y + 128)
+      },
+      (x, y) => {
+        const g = ctx.createLinearGradient(x, y, x, y + 256)
+        g.addColorStop(0, '#3a8aff')
+        g.addColorStop(1, '#1a3a9a')
+        ctx.fillStyle = g
+        ctx.fillRect(x, y, 512, 256)
+        ctx.fillStyle = '#ffffff'
+        ctx.font = `900 96px ${SANS}`
+        ctx.fillText('コーヒー', x + 256, y + 128)
+      },
+      (x, y) => {
+        ctx.fillStyle = '#0e0e14'
+        ctx.fillRect(x, y, 512, 256)
+        ctx.fillStyle = '#a8ff5a'
+        ctx.font = `900 110px ${SANS}`
+        ctx.fillText('ゲーム', x + 256, y + 128)
+      },
+    ]
+    boards.forEach((draw, j) => draw((j % 2) * 512, 512 + Math.floor(j / 2) * 256))
+  })
+}
+
+function tilePlane(w, h, u0, v0, u1, v1) {
+  const g = new PlaneGeometry(w, h)
+  const uv = g.attributes.uv
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, u0 + uv.getX(i) * (u1 - u0), v0 + uv.getY(i) * (v1 - v0))
+  return g
+}
+
+// place a geometry on a building's front face (local +z), rotated with it
+function onFace(g, b, lx, y, out = 0.06) {
+  const c = Math.cos(b.rot)
+  const sn = Math.sin(b.rot)
+  const lz = b.d / 2 + out
+  g.rotateY(b.rot)
+  g.translate(b.x + lx * c + lz * sn, y, b.z - lx * sn + lz * c)
+  return g
+}
+
+// The city round the roof: a near ring of blocks, a dense far skyline,
+// setback towers with rooftop plant, antenna spires, red aircraft beacons,
+// shop signs and billboards. Plus one big sign.
 export default function City() {
-  const { geometry, beacons } = useMemo(() => {
-    const r = rng(42)
+  const { geometry, beacons, signs } = useMemo(() => {
     const parts = []
     const lights = []
-    const add = (dist, x, z, w, d, top) => {
+    const seeds = rng(7)
+    const add = (r, x, z, w, d, top) => {
+      const s = seeds()
+      const rot = (r() - 0.5) * 0.25
       const h = top + 80
-      parts.push(box(w, h, d, x, top - h / 2, z, (r() - 0.5) * 0.25))
-      if (top > 10 && r() < 0.35) {
-        // antenna spire on some of the tall ones
+      parts.push({ g: box(w, h, d, x, top - h / 2, z, rot), s })
+      let t = top
+      let cw = w
+      let cd = d
+      // the taller ones step back as they rise
+      if (top > -4 && r() < 0.55) {
+        const tiers = r() < 0.35 ? 2 : 1
+        for (let k = 0; k < tiers; k++) {
+          cw *= 0.6 + r() * 0.2
+          cd *= 0.6 + r() * 0.2
+          const th = 2 + r() * 5
+          parts.push({ g: box(cw, th, cd, x, t + th / 2, z, rot), s })
+          t += th
+        }
+      }
+      // rooftop plant rooms and tanks
+      const c = Math.cos(rot)
+      const sn = Math.sin(rot)
+      const nb = r() < 0.75 ? 1 + Math.floor(r() * 3) : 0
+      for (let k = 0; k < nb; k++) {
+        const bw = Math.min(cw * 0.5, 1 + r() * 2.4)
+        const bd = Math.min(cd * 0.5, 1 + r() * 2.4)
+        const bh = 0.7 + r() * 1.8
+        const ox = (r() - 0.5) * (cw - bw) * 0.8
+        const oz = (r() - 0.5) * (cd - bd) * 0.8
+        parts.push({ g: box(bw, bh, bd, x + ox * c + oz * sn, t + bh / 2, z - ox * sn + oz * c, rot), s, plain: 1 })
+      }
+      if (t > 10 && r() < 0.35) {
         const sh = 4 + r() * 8
-        parts.push(new CylinderGeometry(0.08, 0.5, sh, 6).translate(x, top + sh / 2, z))
-        lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + sh + 0.3, z))
-      } else if (top > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.6, z))
+        parts.push({ g: new CylinderGeometry(0.08, 0.5, sh, 6).translate(x, t + sh / 2, z), s, plain: 1 })
+        lights.push(new SphereGeometry(0.35, 8, 6).translate(x, t + sh + 0.3, z))
+      } else if (t > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, t + 0.6, z))
+      return { x, z, w, d, top, rot }
     }
+
+    const front = []
+    const r = rng(42)
     // the near ring: blocks below roof level close in, getting taller with distance
     for (let i = 0; i < 70; i++) {
       const a = Math.PI * (0.02 + r() * 0.96) + Math.PI
@@ -95,13 +237,13 @@ export default function City() {
       const z = Math.sin(a + side) * dist - 4
       // mostly under the horizon so the sky stays open, with the odd tall one
       const top = dist < 48 ? -22 + r() * 14 : r() < 0.12 ? 2 + r() * 12 : -16 + r() * 18
-      add(dist, x, z, 5 + r() * 9, 5 + r() * 9, top)
+      front.push(add(r, x, z, 5 + r() * 9, 5 + r() * 9, top))
     }
-    // the far skyline: a dense band of towers that the fog turns violet
+    // the far skyline: a dense band of towers
     for (let i = 0; i < 90; i++) {
       const a = Math.PI * (-0.08 + r() * 1.16) + Math.PI
       const dist = 120 + r() * 70
-      add(dist, Math.cos(a) * dist, Math.sin(a) * dist, 7 + r() * 12, 7 + r() * 12, r() < 0.15 ? 14 + r() * 16 : -8 + r() * 22)
+      add(r, Math.cos(a) * dist, Math.sin(a) * dist, 7 + r() * 12, 7 + r() * 12, r() < 0.15 ? 14 + r() * 16 : -8 + r() * 22)
     }
     // and the half behind the camera, so photo mode can look all the way round
     const rf = rng(77)
@@ -109,40 +251,77 @@ export default function City() {
       const a = Math.PI * (0.02 + rf() * 0.96)
       const dist = 30 + rf() * 80
       const top = dist < 48 ? -22 + rf() * 14 : rf() < 0.15 ? 2 + rf() * 14 : -16 + rf() * 20
-      parts.push(box(5 + rf() * 9, top + 80, 5 + rf() * 9, Math.cos(a) * dist, top - (top + 80) / 2, Math.sin(a) * dist + 6, (rf() - 0.5) * 0.25))
+      add(rf, Math.cos(a) * dist, Math.sin(a) * dist + 6, 5 + rf() * 9, 5 + rf() * 9, top)
     }
     for (let i = 0; i < 70; i++) {
       const a = Math.PI * (0.08 + rf() * 0.84)
       const dist = 120 + rf() * 70
-      const top = rf() < 0.15 ? 14 + rf() * 16 : -8 + rf() * 22
-      parts.push(box(7 + rf() * 12, top + 80, 7 + rf() * 12, Math.cos(a) * dist, top - (top + 80) / 2, Math.sin(a) * dist, (rf() - 0.5) * 0.25))
+      add(rf, Math.cos(a) * dist, Math.sin(a) * dist, 7 + rf() * 12, 7 + rf() * 12, rf() < 0.15 ? 14 + rf() * 16 : -8 + rf() * 22)
     }
+
+    // signs on the buildings in view: blade signs down the upper floors,
+    // billboards on frames on the roofs
+    const signGeos = []
+    const rs = rng(5)
+    for (const b of front) {
+      if (b.top < -13 || b.z > -14) continue
+      const roll = rs()
+      if (roll < 0.4 && b.top > -6) {
+        const i = Math.floor(rs() * BLADES.length)
+        const lx = (rs() < 0.5 ? -1 : 1) * (b.w / 2 - 1.1)
+        const y = b.top - 3.4 - rs() * 2
+        parts.push({ g: onFace(new BoxGeometry(1.5, 5.6, 0.2), b, lx, y, 0.1), s: 0.5, plain: 1 })
+        signGeos.push(onFace(tilePlane(1.3, 5.2, i / 8, 0.5, (i + 1) / 8, 1), b, lx, y, 0.22))
+      } else if (roll < 0.85 && b.w > 5) {
+        const j = Math.floor(rs() * 4)
+        const bw = Math.min(b.w * 0.8, 8)
+        const bh = bw / 2
+        const y = b.top + 1.2 + bh / 2
+        const lz = -b.d / 2 + 1.5
+        for (const sx of [-0.35, 0.35]) parts.push({ g: onFace(new BoxGeometry(0.2, bh + 1.2, 0.2), b, sx * bw, b.top + (bh + 1.2) / 2, lz), s: 0.5, plain: 1 })
+        parts.push({ g: onFace(new BoxGeometry(bw + 0.3, bh + 0.3, 0.25), b, 0, y, lz + 0.1), s: 0.5, plain: 1 })
+        const v1 = 1 - (512 + Math.floor(j / 2) * 256) / 1024
+        signGeos.push(onFace(tilePlane(bw, bh, (j % 2) * 0.5, v1 - 0.25, (j % 2) * 0.5 + 0.5, v1), b, 0, y, lz + 0.24))
+      }
+    }
+
     // the building we're standing on, and the one carrying the big sign
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
-    parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
+    parts.push({ g: box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2), s: seeds() })
     // tall enough that the sign hangs on its face, not above the roofline
-    parts.push(box(12, 76, 8, -13, -22, -58))
-    // one colour seed per building, for its daytime pastel
-    const rs = rng(7)
-    const seeded = parts.map((g) => {
-      const flat = g.toNonIndexed()
-      const n = flat.attributes.position.count
-      flat.setAttribute('bseed', new BufferAttribute(new Float32Array(n).fill(rs()), 1))
-      return flat
+    parts.push({ g: box(12, 76, 8, -13, -22, -58), s: 0.4 })
+
+    const flat = parts.map(({ g, s, plain = 0 }) => {
+      const f = g.toNonIndexed()
+      const n = f.attributes.position.count
+      f.setAttribute('bseed', new BufferAttribute(new Float32Array(n).fill(s), 1))
+      f.setAttribute('plain', new BufferAttribute(new Float32Array(n).fill(plain), 1))
+      return f
     })
-    return { geometry: mergeGeometries(seeded), beacons: mergeGeometries(lights) }
+    return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos) }
   }, [])
 
   return (
     <group>
       <mesh geometry={geometry} material={cityMaterial} />
       <Beacons geometry={beacons} />
+      <Signs geometry={signs} />
       <BigSign />
       {/* right of centre, behind the portals, next to the moon: in view from the start */}
       <Tower position={[29, -40, -115]} scale={0.55} />
     </group>
   )
+}
+
+// Shop signs glow at night and sit back to plain printed boards by day
+function Signs({ geometry }) {
+  const material = useMemo(() => {
+    const m = new MeshBasicNodeMaterial({ toneMapped: false })
+    m.colorNode = texture(signAtlas(), uv()).rgb.mul(mix(0.55, 1.1, U.windows))
+    return m
+  }, [])
+  return <mesh geometry={geometry} material={material} />
 }
 
 function Beacons({ geometry }) {
