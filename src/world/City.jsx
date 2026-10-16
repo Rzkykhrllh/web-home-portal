@@ -121,7 +121,8 @@ export default function City() {
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
     parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
-    parts.push(box(12, 60, 8, -13, -30, -58))
+    // tall enough that the sign hangs on its face, not above the roofline
+    parts.push(box(12, 76, 8, -13, -22, -58))
     // one colour seed per building, for its daytime pastel
     const rs = rng(7)
     const seeded = parts.map((g) => {
@@ -174,12 +175,25 @@ function BigSign() {
       }),
     [],
   )
-  const tint = useMemo(() => new Color('#ffffff').multiplyScalar(1.8), [])
+  const tint = useMemo(() => new Color('#ffffff').multiplyScalar(1.35), [])
+  // bolted to the facade: a dark backing box, two brackets, then the face
   return (
-    <mesh position={[-8.5, 7, -53.95]}>
-      <planeGeometry args={[3, 10.8]} />
-      <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
-    </mesh>
+    <group position={[-8.5, 7, -54]}>
+      <mesh position-z={0.2}>
+        <boxGeometry args={[3.4, 11.2, 0.4]} />
+        <meshStandardMaterial color="#1a1420" metalness={0.5} roughness={0.6} />
+      </mesh>
+      {[4.6, -4.6].map((y) => (
+        <mesh key={y} position={[0, y, 0.15]}>
+          <boxGeometry args={[3.9, 0.18, 0.3]} />
+          <meshStandardMaterial color="#2a2430" metalness={0.6} roughness={0.5} />
+        </mesh>
+      ))}
+      <mesh position-z={0.41}>
+        <planeGeometry args={[3, 10.8]} />
+        <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
+      </mesh>
+    </group>
   )
 }
 

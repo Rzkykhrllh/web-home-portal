@@ -17,20 +17,22 @@ export default function Snow() {
   const count = Math.round(QUALITY.rain * 0.7)
   const flakes = useMemo(() => {
     const r = rng(23)
-    return Array.from({ length: count }, () => [(r() - 0.5) * BOX.x * 2, r() * BOX.y, (r() - 0.5) * BOX.z * 2, 0.6 + r() * 0.7, r() * 6.28, 0.6 + r() * 0.8])
+    return Array.from({ length: count }, () => [(r() - 0.5) * BOX.x * 2, r() * BOX.y, (r() - 0.5) * BOX.z * 2, 0.6 + r() * 0.7, r() * 6.28, 0.45 + r() * r() * 1.4])
   }, [count])
   const { geometry, material } = useMemo(() => {
-    const dot = canvasTexture(64, 64, (ctx) => {
-      const g = ctx.createRadialGradient(32, 32, 0, 32, 32, 32)
-      g.addColorStop(0, 'rgba(255,255,255,1)')
-      g.addColorStop(0.45, 'rgba(255,255,255,0.7)')
+    // a soft blob smeared a little along the fall, so it reads as motion, not a dot
+    const dot = canvasTexture(32, 64, (ctx) => {
+      ctx.scale(1, 2)
+      const g = ctx.createRadialGradient(16, 16, 0, 16, 16, 16)
+      g.addColorStop(0, 'rgba(255,255,255,0.9)')
+      g.addColorStop(0.35, 'rgba(255,255,255,0.45)')
       g.addColorStop(1, 'rgba(255,255,255,0)')
       ctx.fillStyle = g
-      ctx.fillRect(0, 0, 64, 64)
+      ctx.fillRect(0, 0, 32, 32)
     })
     return {
-      geometry: new PlaneGeometry(0.11, 0.11),
-      material: new MeshBasicMaterial({ map: dot, color: '#f4f0ff', transparent: true, opacity: 0, depthWrite: false }),
+      geometry: new PlaneGeometry(0.1, 0.17),
+      material: new MeshBasicMaterial({ map: dot, color: '#eef2ff', transparent: true, fog: true, opacity: 0, depthWrite: false }),
     }
   }, [])
   const mesh = useRef()
@@ -39,7 +41,7 @@ export default function Snow() {
     dt = Math.min(dt, 0.05)
     const m = mesh.current
     m.visible = atmos.snow > 0.02
-    material.opacity = 0.95 * atmos.snow
+    material.opacity = 0.55 * atmos.snow
     if (!m.visible) return
     const t = state.clock.elapsedTime
     const speed = reducedMotion ? 0.4 : 1

@@ -84,13 +84,20 @@ function NeonSign({ p, ...props }) {
         ctx.font = `900 120px ${SANS}`
         ctx.textAlign = 'center'
         ctx.textBaseline = 'middle'
-        ;[...p.jp].forEach((c, i) => ctx.fillText(c, w / 2, 120 + i * 150))
-        ctx.save()
-        ctx.translate(w / 2, 470)
-        ctx.rotate(Math.PI / 2)
-        ctx.font = `700 34px ${SANS}`
+        ;[...p.jp].forEach((c, i) => ctx.fillText(c, w / 2, 112 + i * 140))
+        // thin rule, then the English name running down the sign, sized to fit
+        ctx.shadowBlur = 0
         ctx.fillStyle = p.color
-        ctx.shadowBlur = 10
+        ctx.fillRect(w / 2 - 34, 336, 68, 3)
+        ctx.save()
+        ctx.translate(w / 2, 475)
+        ctx.rotate(Math.PI / 2)
+        ctx.letterSpacing = '4px'
+        let size = 40
+        ctx.font = `700 ${size}px ${SANS}`
+        while (ctx.measureText(p.title).width > 230 && size > 20) ctx.font = `700 ${--size}px ${SANS}`
+        ctx.shadowColor = p.color
+        ctx.shadowBlur = 6
         ctx.fillText(p.title, 0, 0)
         ctx.restore()
       }),
@@ -108,7 +115,7 @@ function NeonSign({ p, ...props }) {
       </mesh>
       <mesh position={[0, 3.0, 0.165]}>
         <planeGeometry args={[0.74, 2.65]} />
-        <meshBasicMaterial map={tex} color={hdr('#ffffff', 1.8)} toneMapped={false} />
+        <meshBasicMaterial map={tex} color={hdr('#ffffff', 1.3)} toneMapped={false} />
       </mesh>
     </group>
   )

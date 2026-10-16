@@ -17,7 +17,7 @@ export default function Effects() {
     const p = new RenderPipeline(gl)
     p.outputColorTransform = false
     const color = pass(scene, camera).getTextureNode('output')
-    const out = fxaa(renderOutput(color.add(bloom(color, 0.8, 0.5, 0.92))))
+    const out = fxaa(renderOutput(color.add(bloom(color, 0.5, 0.4, 1.0))))
     p.outputNode = Fn(() => {
       const c = out.rgb.toVar()
       const lum = dot(c, vec3(0.299, 0.587, 0.114))
