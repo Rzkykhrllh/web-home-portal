@@ -92,8 +92,10 @@ caption: "frame by airu", the time and the weather. Esc to leave.
 
 - **Vending machine**: walk up to it and press E (or tap the prompt) to buy a
   drink. The can drops out and rolls across the tiles; the cat cheers.
-- **Train**: a commuter train crosses on a viaduct behind the roof about once
-  a minute, windows lit at night, with rail clatter when the sound is on.
+- **Train**: a loop-line commuter train after the Yamanote line's stainless
+  E231s (silver body, yellow-green band, four doors a side, cabs at both
+  ends; no markings) crosses on a viaduct under overhead wires about once a
+  minute, windows lit at night, with rail clatter when the sound is on.
 
 ## Sound
 
