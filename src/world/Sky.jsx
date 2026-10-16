@@ -42,12 +42,27 @@ export default function Sky() {
       c.addAssign(sunCol.mul(smoothstep(0.99955, 0.9997, sa)).mul(4.0).mul(U.sun))
       c.addAssign(sunCol.mul(pow(sa, 60).mul(0.35).add(pow(sa, 8).mul(0.12))).mul(U.sun))
 
-      // clouds: a low band normally, most of the sky when it's overcast
-      const cu = dir.xz.div(max(h, 0.04))
-      const n = mx_noise_float(vec3(cu.x.mul(0.8), cu.y.mul(2.2), time.mul(0.01))).mul(0.5).add(0.5)
-      const band = smoothstep(0.02, 0.07, h).mul(smoothstep(mix(0.2, 0.9, U.overcast), 0.09, h))
-      const cover = smoothstep(mix(0.55, 0.3, U.overcast), mix(0.75, 0.55, U.overcast), n)
-      c.assign(mix(c, U.cloud, cover.mul(band).mul(mix(0.8, 0.9, U.overcast))))
+      // clouds. By day: big cumulus, white where the sun catches them and
+      // lavender-grey underneath. By night: a dark band low over the city.
+      // Overcast weather spreads them over the whole sky.
+      // Sampled by direction (azimuth, height) rather than projected onto a
+      // flat layer, so they billow upwards from the skyline like cumulus.
+      const az = atan(dir.z, dir.x)
+      const q = vec3(az.mul(2.4), h.mul(7.0), time.mul(0.01))
+      const fbm = (v) => mx_noise_float(v).mul(0.55).add(mx_noise_float(v.mul(2.1)).mul(0.3)).add(mx_noise_float(v.mul(4.3)).mul(0.15)).mul(0.5).add(0.5)
+      const n = fbm(q)
+      // denser towards the horizon, taller by day and when overcast
+      const rise = smoothstep(mix(0.16, 0.34, U.day).add(U.overcast.mul(0.6)), 0.02, h)
+      const dens = n.add(rise.mul(0.35)).sub(0.22)
+      const threshold = mix(mix(0.52, 0.44, U.day), 0.22, U.overcast)
+      const cover = smoothstep(threshold, threshold.add(0.12), dens).mul(smoothstep(0.012, 0.04, h))
+      // lit from above and from the sun's side: compare with a sample nudged that way
+      const nUp = mx_noise_float(q.add(vec3(U.sunDir.x.mul(0.25), 0.35, 0))).mul(0.5).add(0.5)
+      const light = n.sub(nUp).mul(3.0).add(0.55).clamp(0, 1)
+      const lit = mix(U.cloud, vec3(1.0, 0.99, 0.97), U.day.mul(0.9))
+      const shade = mix(U.cloud.mul(0.7), color('#8e9cc8'), U.day)
+      const cloudCol = mix(shade, lit, light).add(sunCol.mul(pow(sa, 6).mul(0.25)).mul(U.sun)) // warm rim near the sun
+      c.assign(mix(c, cloudCol, cover.mul(mix(0.88, 0.94, U.overcast))))
       return c
     })()
     return m

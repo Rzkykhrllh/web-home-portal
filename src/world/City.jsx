@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, Color, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, Color, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { abs, color, floor, fract, hash, mix, normalWorld, positionWorld, select, smoothstep, step, vec2 } from 'three/tsl'
+import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionWorld, select, smoothstep, step, vec2 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { U } from './Atmosphere.jsx'
@@ -34,13 +34,32 @@ export const cityMaterial = (() => {
   // some facades are lit glass: vertical cyan stripes over the whole wall
   const glassy = step(0.86, hash(block.mul(3.7).add(floor(positionWorld.y.div(60)))))
   const stripe = step(fract(along.mul(0.5)), 0.12).mul(glassy).mul(wall).mul(0.5)
-  // aerial perspective: near blocks are deep indigo, far ones lighter violet
+  // Night: deep indigo near, lighter violet far (colours follow the hour, see Atmosphere)
   const dist = positionWorld.xz.length()
-  // (colours follow the time of day, see Atmosphere)
-  const body = mix(U.near, U.far, smoothstep(40, 170, dist))
-  m.colorNode = mix(body.mul(0.8), body, wall)
-  // fewer windows lit by day; glass facades just catch the light then
-  m.emissiveNode = tint.mul(lit.mul(level).mul(U.windows).add(stripe.mul(mix(0.25, 1, U.windows)))).mul(1.15)
+  const nightBody = mix(U.near, U.far, smoothstep(40, 170, dist))
+  const nightCol = mix(nightBody.mul(0.8), nightBody, wall)
+
+  // Day: each building its own pastel (one seed per building, baked into the
+  // mesh), fading into the haze with distance, and glass that reflects the sky
+  const seed = attribute('bseed', 'float')
+  const pastel = select(
+    seed.lessThan(0.16),
+    color('#dccfb9'),
+    select(seed.lessThan(0.32), color('#b9c8de'), select(seed.lessThan(0.46), color('#86a2cc'), select(seed.lessThan(0.6), color('#e8e4dc'), select(seed.lessThan(0.72), color('#a7b3c6'), select(seed.lessThan(0.84), color('#d6bfb2'), color('#9db7d8')))))),
+  )
+  const dayBody = mix(pastel, U.far, smoothstep(50, 190, dist).mul(0.75))
+  // sky in the glass: bands of blue to near-white running up the facade, and the odd bright glint
+  const sky = mix(color('#3f78cc'), color('#cfe3ff'), fract(positionWorld.y.div(31).add(seed.mul(5))))
+  const glint = step(0.94, r).mul(0.6)
+  const glassTower = step(0.78, seed) // a few towers are glass all over
+  const glass = mix(pane.mul(0.8), 1, glassTower).mul(wall)
+  const glassCol = mix(sky, color('#ffffff'), glint)
+  const dayCol = mix(dayBody.mul(0.86), mix(dayBody, glassCol, glass), wall)
+
+  m.colorNode = mix(nightCol, dayCol, U.day)
+  // night: lit windows; day: the reflections stay bright whatever the light
+  const windowsGlow = tint.mul(lit.mul(level).mul(U.windows).add(stripe.mul(mix(0.25, 1, U.windows))))
+  m.emissiveNode = windowsGlow.mul(1.15).add(glassCol.mul(glass).mul(U.day).mul(0.3))
   return m
 })()
 
@@ -89,7 +108,15 @@ export default function City() {
     const D = ROOF.front - ROOF.back + 0.6
     parts.push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2))
     parts.push(box(12, 60, 8, -13, -30, -58))
-    return { geometry: mergeGeometries(parts.map((g) => g.toNonIndexed())), beacons: mergeGeometries(lights) }
+    // one colour seed per building, for its daytime pastel
+    const rs = rng(7)
+    const seeded = parts.map((g) => {
+      const flat = g.toNonIndexed()
+      const n = flat.attributes.position.count
+      flat.setAttribute('bseed', new BufferAttribute(new Float32Array(n).fill(rs()), 1))
+      return flat
+    })
+    return { geometry: mergeGeometries(seeded), beacons: mergeGeometries(lights) }
   }, [])
 
   return (

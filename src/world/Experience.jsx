@@ -1,6 +1,7 @@
 import Sky from './Sky.jsx'
 import Atmosphere from './Atmosphere.jsx'
 import Snow from './Snow.jsx'
+import Birds from './Birds.jsx'
 import City from './City.jsx'
 import Rooftop from './Rooftop.jsx'
 import Portal from './Portal.jsx'
@@ -27,6 +28,7 @@ export default function Experience() {
       <Cat />
       <Rain />
       <Snow />
+      <Birds />
       <Controller />
       <FollowCamera />
       <Effects />

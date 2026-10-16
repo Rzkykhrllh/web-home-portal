@@ -69,7 +69,9 @@ and weather; open it to drag the time of day or pick clear, rain or snow, and
 "Back to Tokyo now" returns to live.
 
 A full day is keyframed in `src/world/Atmosphere.jsx`: night, late night,
-dawn, day (blue sky, the sun crossing from left to right), afternoon and dusk.
+dawn, day (deep blue sky with cumulus billowing up behind the skyline, the
+sun crossing low from left to right, pastel buildings whose glass reflects
+the sky, a flock of birds circling), afternoon and dusk.
 It blends the sky, fog, light and city colours, how many windows are lit,
 stars and moon. Rain and snow grey the sky, bring the fog in, wet (or dust)
 the tiles, and the rain sound follows the weather.
@@ -126,7 +128,7 @@ src/
     Rooftop.jsx       tiled balcony, railing, vending machine, AC, tank, stairwell
     City.jsx          layered skyline as one mesh with shader windows, spires, beacons, アイル sign
     Atmosphere.jsx    day/night keyframes + weather → sky, fog, lights, city uniforms
-    Sky.jsx, Rain.jsx, Snow.jsx
+    Sky.jsx, Rain.jsx, Snow.jsx, Birds.jsx
 ```
 
 Coming back with the browser's Back button restores the page from the

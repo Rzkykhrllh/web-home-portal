@@ -4,7 +4,7 @@ import { BoxGeometry, Color, CylinderGeometry } from 'three/webgpu'
 import { ROOF } from '../config.js'
 import { AC_UNITS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
-import { atmos } from './Atmosphere.jsx'
+import { U, atmos } from './Atmosphere.jsx'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
@@ -43,8 +43,9 @@ export default function Rooftop() {
   useFrame(() => {
     if (!tiles.current) return
     tiles.current.roughness = 0.72 - atmos.wet * 0.36
-    // a light dusting when it snows
-    tiles.current.color.setRGB(1, 1, 1).lerp(SNOW_TINT, atmos.snow * 0.45)
+    // lighter tiles in daylight, a light dusting when it snows
+    const day = 1 + U.day.value * 0.8
+    tiles.current.color.setRGB(day, day, day * 1.02).lerp(SNOW_TINT, atmos.snow * 0.45)
   })
 
   const onGround = (e) => {
