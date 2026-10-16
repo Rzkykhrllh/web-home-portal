@@ -6,6 +6,7 @@ const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse
 export const LOW = q === 'low' || (q !== 'high' && coarse)
 export const QUALITY = {
   rain: LOW ? 400 : 900,
-  // starting pixel ratio; Perf.jsx lowers it further if the frame rate drops
-  dpr: Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, LOW ? 1.25 : 1.5),
+  // starting pixel ratio: full retina on desktop (anything less looks soft once
+  // it's stretched to the screen); Perf.jsx lowers it if the frame rate drops
+  dpr: Math.min(typeof devicePixelRatio === 'number' ? devicePixelRatio : 1, LOW ? 1.5 : 2),
 }

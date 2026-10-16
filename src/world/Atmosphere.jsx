@@ -142,8 +142,8 @@ export default function Atmosphere() {
     if (scene.fog) {
       scene.fog.color.copy(k.haze)
       // clear days see further than nights; bad weather closes in
-      scene.fog.near = MathUtils.lerp(MathUtils.lerp(45, 80, sunVis), 28, O)
-      scene.fog.far = MathUtils.lerp(MathUtils.lerp(230, 420, sunVis), 140, O)
+      scene.fog.near = MathUtils.lerp(MathUtils.lerp(70, 90, sunVis), 28, O)
+      scene.fog.far = MathUtils.lerp(MathUtils.lerp(340, 460, sunVis), 140, O)
     }
 
     hemi.current.color.copy(k.hemiSky)
