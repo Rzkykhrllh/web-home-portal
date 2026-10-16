@@ -15,6 +15,7 @@ let echo = null
 let white = null
 let timer = 0
 let on = false
+let rainLevel = 0 // set by the scene's weather, see setRainSound
 
 const BPM = 76
 const BEAT = 60 / BPM
@@ -72,7 +73,7 @@ function loopNoise(buffer, chain, out, level) {
 
 function buildRain() {
   rain = ctx.createGain()
-  rain.gain.value = 0.32 // ambience under the music, not over it
+  rain.gain.value = 0.32 * rainLevel // ambience under the music, not over it; follows the weather
   rain.connect(master)
   white = noiseBuffer(3)
   // the steady hiss of rain on everything, and a softer low wash under it
@@ -270,8 +271,10 @@ function schedule() {
   }
   // rain drops, at their own irregular pace
   while (nextDrop < horizon) {
-    drop(nextDrop, Math.random() < 0.35)
-    if (Math.random() < 0.012) ting(nextDrop)
+    if (rainLevel > 0.1) {
+      drop(nextDrop, Math.random() < 0.35)
+      if (Math.random() < 0.012) ting(nextDrop)
+    }
     nextDrop += 0.02 + Math.random() * 0.09
   }
 }
@@ -313,6 +316,13 @@ export function setSound(enabled) {
       }
     }, 450)
   }
+}
+
+// How hard it's raining in the scene (0..1): the rain bed and drops follow it
+export function setRainSound(level) {
+  if (Math.abs(level - rainLevel) < 0.02) return
+  rainLevel = level
+  if (rain) rain.gain.setTargetAtTime(0.32 * level, ctx.currentTime, 0.3)
 }
 
 // Stepping through a portal: let it all fade with the warp

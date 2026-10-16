@@ -1,10 +1,11 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { BufferAttribute, BufferGeometry } from 'three/webgpu'
 import { QUALITY } from '../quality.js'
 import { reducedMotion } from '../portal-nav.js'
 import { player } from '../store.js'
 import { rng } from './canvasTexture.js'
+import { atmos } from './Atmosphere.jsx'
 
 // Light rain: thin lavender streaks falling at a slant in a box that follows
 // the cat, so the camera always looks through it. One draw call.
@@ -23,8 +24,13 @@ export default function Rain() {
     return { geometry: g, drops }
   }, [count])
 
+  const lines = useRef()
   useFrame((_, dt) => {
     dt = Math.min(dt, 0.05)
+    // fades with the weather; skip the work entirely when it's dry
+    lines.current.visible = atmos.rain > 0.02
+    lines.current.material.opacity = 0.32 * atmos.rain
+    if (!lines.current.visible) return
     const speed = reducedMotion ? 0.3 : 1
     const pos = geometry.attributes.position.array
     const cx = player.pos.x
@@ -53,7 +59,7 @@ export default function Rain() {
   })
 
   return (
-    <lineSegments geometry={geometry} frustumCulled={false}>
+    <lineSegments ref={lines} geometry={geometry} frustumCulled={false}>
       <lineBasicMaterial color="#cdbfff" transparent opacity={0.32} depthWrite={false} />
     </lineSegments>
   )

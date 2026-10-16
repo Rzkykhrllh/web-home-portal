@@ -4,6 +4,7 @@ import { BoxGeometry, Color, CylinderGeometry } from 'three/webgpu'
 import { ROOF } from '../config.js'
 import { AC_UNITS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
+import { atmos } from './Atmosphere.jsx'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 
@@ -12,6 +13,7 @@ const D = ROOF.front - ROOF.back
 const CZ = (ROOF.front + ROOF.back) / 2
 
 const glow = (hex, k) => new Color(hex).multiplyScalar(k)
+const SNOW_TINT = new Color(2.4, 2.4, 2.7) // multiplies the dark tile colours up towards white
 
 // Square floor tiles with dark grout, a few slightly off in tone like real
 // balcony tiles. Flat colours to match the illustrated skyline.
@@ -37,6 +39,13 @@ function tileTexture() {
 export default function Rooftop() {
   const gl = useThree((s) => s.gl)
   const map = useMemo(tileTexture, [])
+  const tiles = useRef()
+  useFrame(() => {
+    if (!tiles.current) return
+    tiles.current.roughness = 0.72 - atmos.wet * 0.36
+    // a light dusting when it snows
+    tiles.current.color.setRGB(1, 1, 1).lerp(SNOW_TINT, atmos.snow * 0.45)
+  })
 
   const onGround = (e) => {
     if (e.delta > 8) return
@@ -56,8 +65,8 @@ export default function Rooftop() {
         onPointerOut={cursor('')}
       >
         <planeGeometry args={[W, D]} />
-        {/* rain-wet tiles: glossy enough to catch the neon */}
-        <meshStandardMaterial map={map} roughness={0.38} metalness={0.15} />
+        {/* glossy when wet so the neon catches, matte when dry (see useFrame above) */}
+        <meshStandardMaterial ref={tiles} map={map} roughness={0.7} metalness={0.15} />
       </mesh>
 
       <Parapet />

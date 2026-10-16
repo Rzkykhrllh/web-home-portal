@@ -4,6 +4,7 @@ import { enterPortal } from '../portal-nav.js'
 import { input, player, useUi } from '../store.js'
 import { jump } from '../input.js'
 import { setSound } from '../audio.js'
+import SkyControl from './SkyControl.jsx'
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const hostOf = (url) => new URL(url).host.replace(/^www\./, '')
@@ -55,7 +56,12 @@ export default function Overlay() {
         </nav>
       </header>
 
-      {loaded && !leaving && <NowPlaying />}
+      {loaded && !leaving && (
+        <div className="corner">
+          <SkyControl />
+          <NowPlaying />
+        </div>
+      )}
 
       {near && !leaving && (
         <aside className={`card card-${near.id}`} aria-live="polite">

@@ -59,6 +59,23 @@ first night version. If the frame rate still drops under ~50, the
 pixel ratio steps down (never below 1). Add `?stats` to see fps, pixel ratio,
 draw calls and which backend (WebGPU or WebGL 2) is running.
 
+## Time and weather
+
+By default the rooftop shows Tokyo right now: the clock in Asia/Tokyo and the
+current weather from [Open-Meteo](https://open-meteo.com) (free, no key;
+refreshed every 15 minutes, and shown as clear if it can't be reached). The
+sky corner (bottom left; top right on phones) shows Tokyo's time, temperature
+and weather; open it to drag the time of day or pick clear, rain or snow, and
+"Back to Tokyo now" returns to live.
+
+A full day is keyframed in `src/world/Atmosphere.jsx`: night, late night,
+dawn, day (blue sky, the sun crossing from left to right), afternoon and dusk.
+It blends the sky, fog, light and city colours, how many windows are lit,
+stars and moon. Rain and snow grey the sky, bring the fog in, wet (or dust)
+the tiles, and the rain sound follows the weather.
+
+Share a look with `?hour=18.5&weather=rain`.
+
 ## Sound
 
 The "now playing" corner (bottom left; top right on phones) turns on rain and a lofi loop. Both are
@@ -95,7 +112,9 @@ src/
   input.js            keyboard (walk, jump, spin, E to enter)
   portal-nav.js       walk-to-portal, warp out and navigate, reset on Back
   audio.js            synthesised rain + lofi loop
+  sky-state.js        live Tokyo time + Open-Meteo weather, manual overrides
   ui/Overlay.jsx      title, portal tags, now playing, portal card, touch stick, loader
+  ui/SkyControl.jsx   the time/weather corner and its panel
   world/
     Stage.jsx         <Canvas> with WebGPURenderer (lazy-loaded)
     Effects.jsx       RenderPipeline: bloom + FXAA
@@ -106,7 +125,8 @@ src/
     Portal.jsx        sign, floor glow, DevGate (code door), Aperture (lens)
     Rooftop.jsx       tiled balcony, railing, vending machine, AC, tank, stairwell
     City.jsx          layered skyline as one mesh with shader windows, spires, beacons, アイル sign
-    Sky.jsx, Rain.jsx
+    Atmosphere.jsx    day/night keyframes + weather → sky, fog, lights, city uniforms
+    Sky.jsx, Rain.jsx, Snow.jsx
 ```
 
 Coming back with the browser's Back button restores the page from the

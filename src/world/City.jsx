@@ -5,6 +5,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { abs, color, floor, fract, hash, mix, normalWorld, positionWorld, select, smoothstep, step, vec2 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
+import { U } from './Atmosphere.jsx'
 
 // Lit windows, computed in the shader from world position instead of a
 // texture per building. That lets every building, plus the one under our
@@ -35,9 +36,11 @@ export const cityMaterial = (() => {
   const stripe = step(fract(along.mul(0.5)), 0.12).mul(glassy).mul(wall).mul(0.5)
   // aerial perspective: near blocks are deep indigo, far ones lighter violet
   const dist = positionWorld.xz.length()
-  const body = mix(color('#1a1442'), color('#43307a'), smoothstep(40, 170, dist))
+  // (colours follow the time of day, see Atmosphere)
+  const body = mix(U.near, U.far, smoothstep(40, 170, dist))
   m.colorNode = mix(body.mul(0.8), body, wall)
-  m.emissiveNode = tint.mul(lit.mul(level).add(stripe)).mul(1.15)
+  // fewer windows lit by day; glass facades just catch the light then
+  m.emissiveNode = tint.mul(lit.mul(level).mul(U.windows).add(stripe.mul(mix(0.25, 1, U.windows)))).mul(1.15)
   return m
 })()
 
