@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshBasicNodeMaterial, MeshStandardNodeMaterial, PlaneGeometry, IcosahedronGeometry, LineBasicMaterial, Float32BufferAttribute, BufferGeometry, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshBasicNodeMaterial, MeshStandardNodeMaterial, PlaneGeometry, IcosahedronGeometry, ConeGeometry, LineBasicMaterial, Float32BufferAttribute, BufferGeometry, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
 import { attribute, color, dot, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, step, texture, uv, vec2, vec3 } from 'three/tsl'
 import { ROOF } from '../config.js'
@@ -55,12 +55,13 @@ export const cityMaterial = (() => {
   const shade = step(ndl, 0.1).mul(top.oneMinus())
   const wall = top.oneMinus()
 
-  // colour family: 0 body, 1 trim, 2 metal, 3 green rail, 4 rust tank, 5 plant, 6 glass tower
+  // colour family: 0 body, 1 trim, 2 metal, 3 green rail, 4 rust/wood, 5 plant, 6 glass tower,
+  // 7 vermilion, 8 roof tile, 9 stone, 10 dark green
   const body = pick(BODY, fract(seed.mul(9.17)))
   const base = select(
     kind.lessThan(0.5),
     body,
-    select(kind.lessThan(1.5), color('#f1e9dd'), select(kind.lessThan(2.5), color('#4a5068'), select(kind.lessThan(3.5), color('#4f9a62'), select(kind.lessThan(4.5), color('#a0583c'), select(kind.lessThan(5.5), color('#6aa84f'), color('#8fa8d0')))))),
+    select(kind.lessThan(1.5), color('#f1e9dd'), select(kind.lessThan(2.5), color('#4a5068'), select(kind.lessThan(3.5), color('#4f9a62'), select(kind.lessThan(4.5), color('#a0583c'), select(kind.lessThan(5.5), color('#6aa84f'), select(kind.lessThan(6.5), color('#8fa8d0'), select(kind.lessThan(7.5), color('#d8452e'), select(kind.lessThan(8.5), color('#3d4458'), select(kind.lessThan(9.5), color('#a59e94'), color('#3f7a4a')))))))))),
   )
   const roofCol = select(kind.lessThan(0.5), color('#cfc8bf'), base.mul(1.12))
 
@@ -89,7 +90,7 @@ export const cityMaterial = (() => {
   const glint = step(fract(f.x.add(f.y.mul(0.6)).add(rnd)), 0.22)
   const glassCol = select(rnd.greaterThan(0.82), color('#e8dcc4'), mix(color('#2f4468'), color('#6f8fc4'), glint))
   // glass towers: curtain wall with vertical mullions and a diagonal sheen
-  const isGlass = step(5.5, kind).mul(wall)
+  const isGlass = step(5.5, kind).mul(step(kind, 6.5)).mul(wall)
   const gAlong = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
   const mull = step(0.9, fract(gAlong.div(1.4)))
   const sheen = step(0.7, fract(positionWorld.y.mul(0.04).add(gAlong.mul(0.02)).add(seed)))
@@ -242,13 +243,109 @@ function onFace(g, b, lx, y, out = 0.06) {
   return g
 }
 
+// A small shrine on a hill across the tracks, front left: a stone-walled
+// mound, a vermilion torii, a stone path with lanterns, a white-walled hall
+// under a tiered tile roof, a five-storey pagoda, and trees round it all.
+// Built from the same poster kinds so it shares the city's one draw call;
+// only the lantern lights are a separate mesh (they glow at night).
+const SHRINE = { x: -24, z: -42, g: -2 }
+const SQ = Math.SQRT2
+// a square frustum / pyramid, scaled to w x d at the bottom
+const hipRoof = (w, h, d, topScale, x, y, z) =>
+  new CylinderGeometry(topScale, 1, 1, 4, 1).rotateY(Math.PI / 4).scale(w / SQ, h, d / SQ).translate(x, y + h / 2, z)
+
+function shrine(push, lanterns) {
+  const { x: X, z: Z, g: G } = SHRINE
+  const at = (geo, x, y, z) => geo.translate(X + x, y, Z + z)
+  // the mound with a stone retaining wall, and steps up the front
+  push(at(new BoxGeometry(20, 50, 16), 0, G - 25, 0), 0.5, 9)
+  for (let i = 0; i < 4; i++) push(at(new BoxGeometry(3, 0.5, 0.6), 2, G - 0.25 - i * 0.5, 8.3 + i * 0.6), 0.5, 9)
+  // stone path from the torii to the hall
+  push(at(new BoxGeometry(1.8, 0.12, 9), 2, G + 0.06, 2.5), 0.5, 1)
+
+  // torii at the top of the steps
+  const tz = 6.8
+  for (const sx of [-1.7, 1.7]) push(at(new CylinderGeometry(0.22, 0.26, 4, 10), 2 + sx, G + 2, tz), 0.5, 7)
+  push(at(new BoxGeometry(5.6, 0.32, 0.55), 2, G + 4.25, tz), 0.5, 2)
+  push(at(new BoxGeometry(5.0, 0.3, 0.45), 2, G + 3.95, tz), 0.5, 7)
+  push(at(new BoxGeometry(4.2, 0.24, 0.26), 2, G + 3.25, tz), 0.5, 7)
+  push(at(new BoxGeometry(0.5, 0.7, 0.12), 2, G + 3.6, tz + 0.12), 0.5, 2)
+
+  // stone lanterns along the path
+  for (const lz of [4.6, 1.2]) {
+    for (const sx of [-1.6, 1.6]) {
+      const lx = 2 + sx
+      push(at(new BoxGeometry(0.6, 0.25, 0.6), lx, G + 0.12, lz), 0.5, 9)
+      push(at(new CylinderGeometry(0.12, 0.14, 0.8, 6), lx, G + 0.65, lz), 0.5, 9)
+      push(at(new BoxGeometry(0.62, 0.12, 0.62), lx, G + 1.1, lz), 0.5, 9)
+      lanterns.push(at(new BoxGeometry(0.42, 0.4, 0.42), lx, G + 1.36, lz))
+      push(at(hipRoof(0.9, 0.35, 0.9, 0.05, 0, 0, 0), lx, G + 1.56, lz), 0.5, 9)
+    }
+  }
+
+  // the hall: stone base, vermilion posts and beam, white walls, tiered roof
+  const hx = 3
+  const hz = -4
+  push(at(new BoxGeometry(9, 0.6, 7), hx, G + 0.3, hz), 0.5, 9)
+  push(at(new BoxGeometry(6.4, 2.6, 4.6), hx, G + 1.9, hz), 0.5, 1)
+  for (const px of [-3.6, -1.2, 1.2, 3.6]) for (const pz of [-2.8, 2.8]) push(at(new CylinderGeometry(0.18, 0.18, 2.9, 8), hx + px, G + 2.05, hz + pz), 0.5, 7)
+  push(at(new BoxGeometry(7.6, 0.32, 5.9), hx, G + 3.5, hz), 0.5, 7)
+  push(at(new BoxGeometry(1.6, 1.8, 0.1), hx, G + 1.6, hz + 2.33), 0.5, 2) // doorway
+  push(at(new BoxGeometry(10.6, 0.22, 8.4), hx, G + 3.77, hz), 0.5, 8)
+  push(hipRoof(10.4, 0.9, 8.2, 0.62, X + hx, G + 3.88, Z + hz), 0.5, 8)
+  push(hipRoof(6.4, 1.7, 5.0, 0.0, X + hx, G + 4.78, Z + hz), 0.5, 8)
+  push(at(new BoxGeometry(3.2, 0.32, 0.36), hx, G + 6.1, hz), 0.5, 8) // ridge
+  for (const sx of [-1.7, 1.7]) push(at(new BoxGeometry(0.3, 0.55, 0.42), hx + sx, G + 6.3, hz), 0.5, 2)
+
+  // five-storey pagoda at the back left
+  const px = -6
+  const pz = -3
+  push(at(new BoxGeometry(5.6, 0.7, 5.6), px, G + 0.35, pz), 0.5, 9)
+  let y = G + 0.7
+  for (let i = 0; i < 5; i++) {
+    const s = 4.4 - i * 0.55
+    const bh = i === 0 ? 2.1 : 1.5
+    push(at(new BoxGeometry(s * 0.66, bh, s * 0.66), px, y + bh / 2, pz), 0.5, 7)
+    push(at(new BoxGeometry(s * 0.7, 0.18, s * 0.7), px, y + bh - 0.09, pz), 0.5, 1)
+    push(hipRoof(s + 1.6, 0.55, s + 1.6, 0.55, X + px, y + bh, Z + pz), 0.5, 8)
+    y += bh + 0.55
+  }
+  push(at(new CylinderGeometry(0.1, 0.16, 4, 6), px, y + 2, pz), 0.5, 2)
+  for (let i = 0; i < 5; i++) push(at(new CylinderGeometry(0.32, 0.32, 0.1, 10), px, y + 0.6 + i * 0.5, pz), 0.5, 2)
+
+  // trees: round broadleaf crowns in two greens and a few tall cedars
+  const r = rng(61)
+  const spots = [[-9, 6], [-8.5, -7.5], [8.5, 6.5], [8.6, -7], [-2, -7.6], [7, -1], [-9, 1], [5.5, 7]]
+  for (const [tx, tz2] of spots) {
+    if (r() < 0.4) {
+      const h = 4 + r() * 2
+      push(at(new BoxGeometry(0.25, 1, 0.25), tx, G + 0.5, tz2), 0.5, 4)
+      push(at(new ConeGeometry(1.1, h, 7), tx, G + 1 + h / 2, tz2), 0.5, 10)
+    } else {
+      const cr = 1.3 + r() * 0.7
+      push(at(new BoxGeometry(0.3, 1.6, 0.3), tx, G + 0.8, tz2), 0.5, 4)
+      push(at(new IcosahedronGeometry(cr, 0).scale(1, 0.85, 1), tx, G + 1.6 + cr * 0.6, tz2), 0.5, 10)
+      push(at(new IcosahedronGeometry(cr * 0.6, 0), tx + 0.3, G + 2.2 + cr, tz2 + 0.3), 0.5, 5)
+    }
+  }
+}
+
+function LanternLights({ geometry }) {
+  const material = useMemo(() => {
+    const m = new MeshBasicNodeMaterial({ toneMapped: false })
+    m.colorNode = color('#ffc27a').mul(mix(0.45, 2.2, U.windows))
+    return m
+  }, [])
+  return <mesh geometry={geometry} material={material} />
+}
+
 // The city round the roof, drawn like a poster: low neighbours close in
 // at about our height so their clutter reads (coping, balconies with green
 // railings, AC units, tanks, antennas, rooftop plants), power lines sagging
 // between them, taller blocks further out, and a pale skyline of towers that
 // the haze turns lavender. Plus shop signs and one big sign.
 export default function City() {
-  const { geometry, beacons, signs, wires } = useMemo(() => {
+  const { geometry, beacons, signs, wires, lanterns } = useMemo(() => {
     const parts = []
     const lights = []
     const anchors = []
@@ -264,7 +361,7 @@ export default function City() {
     }
 
     // footprints taken so far, so buildings never grow into each other
-    const taken = [{ x: 0, z: (ROOF.front + ROOF.back) / 2, rad: 13 }, { x: -13, z: -58, rad: 7 }]
+    const taken = [{ x: 0, z: (ROOF.front + ROOF.back) / 2, rad: 13 }, { x: -13, z: -58, rad: 7 }, { x: SHRINE.x, z: SHRINE.z, rad: 13 }]
     // Roof clutter for every building, sized to it: plant rooms, cooling
     // towers, water tanks on legs, ducts, lattice masts, a perimeter rail.
     // Items take different quarters of the roof so they don't pile up.
@@ -315,8 +412,9 @@ export default function City() {
         const ah = (3 + r() * 5) * k
         push(at(new CylinderGeometry(0.06, 0.12, ah, 5), b, lx, roof + ah / 2, lz), s, 2)
         for (const f of [0.55, 0.8]) push(at(new BoxGeometry(1.1 * k, 0.07, 0.07), b, lx, roof + ah * f, lz), s, 2)
-        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx + 0.35 * k, roof + ah * 0.85, lz), s, 1)
-        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx - 0.35 * k, roof + ah * 0.85, lz), s, 1)
+        // panel antennas clamped to the ends of the upper cross bar
+        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx + 0.5 * k, roof + ah * 0.8, lz), s, 1)
+        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx - 0.5 * k, roof + ah * 0.8, lz), s, 1)
         if (t + ah > 8) {
           const p = at(new SphereGeometry(0.3, 8, 6), b, lx, roof + ah + 0.2, lz)
           lights.push(p)
@@ -324,12 +422,23 @@ export default function City() {
         top = [lx, roof + ah * 0.8, lz]
       }
       if (r() < 0.4) {
-        // railing round the whole roof edge
-        const y = roof + 0.75
-        push(at(new BoxGeometry(cw * 0.96, 0.07, 0.07), b, 0, y, cd / 2 - 0.15), s, rail)
-        push(at(new BoxGeometry(cw * 0.96, 0.07, 0.07), b, 0, y, -cd / 2 + 0.15), s, rail)
-        push(at(new BoxGeometry(0.07, 0.07, cd * 0.96), b, cw / 2 - 0.15, y, 0), s, rail)
-        push(at(new BoxGeometry(0.07, 0.07, cd * 0.96), b, -cw / 2 + 0.15, y, 0), s, rail)
+        // railing round the whole roof edge: posts standing on the roof,
+        // a top rail and a mid rail between them
+        const y = roof + 0.8
+        const ex = cw / 2 - 0.15
+        const ez = cd / 2 - 0.15
+        for (const sz of [-1, 1]) {
+          push(at(new BoxGeometry(cw - 0.3, 0.07, 0.07), b, 0, y, sz * ez), s, rail)
+          push(at(new BoxGeometry(cw - 0.3, 0.05, 0.05), b, 0, y - 0.4, sz * ez), s, rail)
+          const n = Math.max(2, Math.round((cw - 0.3) / 1.6))
+          for (let i = 0; i <= n; i++) push(at(new BoxGeometry(0.07, 0.8, 0.07), b, -ex + (i / n) * ex * 2, roof + 0.4, sz * ez), s, rail)
+        }
+        for (const sx of [-1, 1]) {
+          push(at(new BoxGeometry(0.07, 0.07, cd - 0.3), b, sx * ex, y, 0), s, rail)
+          push(at(new BoxGeometry(0.05, 0.05, cd - 0.3), b, sx * ex, y - 0.4, 0), s, rail)
+          const n = Math.max(2, Math.round((cd - 0.3) / 1.6))
+          for (let i = 1; i < n; i++) push(at(new BoxGeometry(0.07, 0.8, 0.07), b, sx * ex, roof + 0.4, -ez + (i / n) * ez * 2), s, rail)
+        }
       }
       if (anchor) {
         if (!top) {
@@ -533,8 +642,11 @@ export default function City() {
     push(box(12.3, 0.35, 8.3, -13, 16.17, -58), 0.12, 1)
     clutter(rng(13), { x: -13, z: -58, rot: 0 }, 12, 8, 16, 0.12, 1, false)
 
+    const lanternGeos = []
+    shrine(push, lanternGeos)
+
     const flat = parts.map(({ g, s, kind, fh }) => posterize(g, kind, s, fh))
-    return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires }
+    return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires, lanterns: mergeGeometries(lanternGeos) }
   }, [])
 
   const wireMat = useMemo(() => new LineBasicMaterial({ color: '#1c2236' }), [])
@@ -544,6 +656,7 @@ export default function City() {
       <lineSegments geometry={wires} material={wireMat} />
       <Beacons geometry={beacons} />
       <Signs geometry={signs} />
+      <LanternLights geometry={lanterns} />
       <BigSign />
       {/* right of centre, behind the portals, next to the moon: in view from the start */}
       <Tower position={[29, -40, -115]} scale={0.55} />
