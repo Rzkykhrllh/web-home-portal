@@ -2,6 +2,8 @@ import Sky from './Sky.jsx'
 import Atmosphere from './Atmosphere.jsx'
 import Snow from './Snow.jsx'
 import Birds from './Birds.jsx'
+import Train from './Train.jsx'
+import Cans from './Cans.jsx'
 import City from './City.jsx'
 import Rooftop from './Rooftop.jsx'
 import Portal from './Portal.jsx'
@@ -22,6 +24,8 @@ export default function Experience() {
       <Atmosphere />
       <City />
       <Rooftop />
+      <Train />
+      <Cans />
       {portals.map((p) => (
         <Portal key={p.id} p={p} />
       ))}

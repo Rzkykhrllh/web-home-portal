@@ -13,6 +13,7 @@ export const player = {
   leaving: -1, // seconds since we stepped into a portal, -1 = not leaving
   portal: null, // the portal we're leaving through
   path: [], // tap / click-to-walk waypoints: [[x, z], ...]
+  cheer: 99, // seconds since the cat last got something to cheer about (a drink!)
 }
 
 export const input = {
@@ -21,7 +22,7 @@ export const input = {
 }
 
 // A tiny store for the HTML overlay
-let ui = { near: null, leaving: null, loaded: false, failed: false }
+let ui = { near: null, leaving: null, loaded: false, failed: false, photo: false, filter: 0, vend: false }
 const listeners = new Set()
 export const uiStore = {
   get: () => ui,

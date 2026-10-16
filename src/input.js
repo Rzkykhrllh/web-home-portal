@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 import { JUMP_TIME } from './config.js'
 import { input, player, uiStore } from './store.js'
 import { enterPortal } from './portal-nav.js'
+import { setPhoto } from './photo.js'
+import { buyDrink } from './vending.js'
 
 const MOVE = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'])
 
@@ -30,8 +32,13 @@ export function useInput() {
       } else if ((k === 'k' || k === 'x') && !e.repeat) {
         spin()
       } else if ((k === 'e' || (k === 'enter' && !onControl)) && !e.repeat) {
-        const near = uiStore.get().near
-        if (near) enterPortal(near)
+        const ui = uiStore.get()
+        if (ui.near) enterPortal(ui.near)
+        else if (ui.vend) buyDrink()
+      } else if (k === 'p' && !e.repeat) {
+        setPhoto(!uiStore.get().photo)
+      } else if (k === 'escape' && uiStore.get().photo) {
+        setPhoto(false)
       }
     }
     const up = (e) => input.keys.delete(e.key.toLowerCase())

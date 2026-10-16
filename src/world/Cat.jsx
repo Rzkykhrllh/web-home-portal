@@ -160,7 +160,7 @@ export default function Cat() {
     if (presence < 1 && !reducedMotion) body.current.rotation.y += (1 - presence) * Math.PI * 4
 
     // Pick a clip
-    const waving = player.warp > 1 && player.warp < 3.4 && !moving && !reducedMotion
+    const waving = ((player.warp > 1 && player.warp < 3.4) || player.cheer < 1.8) && !moving && !reducedMotion
     let name
     if ((spinning || leaving) && actions.spin) name = 'spin'
     else if (jumping && actions.jump) name = jumpT < 0.5 ? 'jump' : 'fall'

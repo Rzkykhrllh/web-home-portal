@@ -1,7 +1,8 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { MathUtils, Vector3 } from 'three/webgpu'
-import { player } from '../store.js'
+import { player, uiStore } from '../store.js'
+import { orbit } from '../photo.js'
 import { reducedMotion } from '../portal-nav.js'
 
 // Third-person camera behind and above the cat. Starts high and swoops down
@@ -27,6 +28,24 @@ export default function FollowCamera() {
       cam.updateProjectionMatrix()
     }
     const p = player.pos
+
+    // Photo mode: orbit the cat (drag to turn, wheel or pinch to zoom)
+    if (uiStore.get().photo) {
+      const r = orbit.dist
+      want.set(
+        p.x + Math.sin(orbit.yaw) * Math.cos(orbit.pitch) * r,
+        p.y + 0.9 + Math.sin(orbit.pitch) * r,
+        p.z + Math.cos(orbit.yaw) * Math.cos(orbit.pitch) * r,
+      )
+      cam.position.x = MathUtils.damp(cam.position.x, want.x, 6, dt)
+      cam.position.y = MathUtils.damp(cam.position.y, Math.max(0.3, want.y), 6, dt)
+      cam.position.z = MathUtils.damp(cam.position.z, want.z, 6, dt)
+      look.x = MathUtils.damp(look.x, p.x, 8, dt)
+      look.y = MathUtils.damp(look.y, p.y + 0.9, 8, dt)
+      look.z = MathUtils.damp(look.z, p.z, 8, dt)
+      cam.lookAt(look)
+      return
+    }
 
     want.set(p.x * 0.9, up + (1 - intro) * 9, p.z + back + (1 - intro) * 8)
     let lookZ = p.z - 6

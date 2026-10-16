@@ -41,6 +41,8 @@ npm run build    # static site in dist/
 | Go to a portal | walk into it, click it, or press E when the card shows | walk in or tap it |
 | Jump | Space | ⤒ button |
 | Spin | K / X, or click the cat | tap the cat |
+| Buy a drink | E at the vending machine | tap the prompt |
+| Photo mode | P (Space shoots, Esc leaves) | camera button |
 
 The two tags at the top right are plain links that skip the walk, so a
 recruiter in a hurry is one click away. Ctrl/Cmd-click on any of them (or on
@@ -78,6 +80,21 @@ the tiles, and the rain sound follows the weather.
 
 Share a look with `?hour=18.5&weather=rain`.
 
+## Photo mode
+
+Press **P** or the camera button. The HUD steps aside, the cat holds still
+and the camera orbits it (drag to turn, scroll or pinch to zoom). Pick a look,
+Natural, Film (faded and warm) or Mono, each with grain and a vignette, and
+press the shutter (or Space). The frame is saved as a PNG with a small
+caption: "frame by airu", the time and the weather. Esc to leave.
+
+## Also on the roof
+
+- **Vending machine**: walk up to it and press E (or tap the prompt) to buy a
+  drink. The can drops out and rolls across the tiles; the cat cheers.
+- **Train**: a commuter train crosses on a viaduct behind the roof about once
+  a minute, windows lit at night, with rail clatter when the sound is on.
+
 ## Sound
 
 The "now playing" corner (bottom left; top right on phones) turns on rain and a lofi loop. Both are
@@ -113,13 +130,16 @@ src/
   store.js            per-frame player state + tiny store for the overlay
   input.js            keyboard (walk, jump, spin, E to enter)
   portal-nav.js       walk-to-portal, warp out and navigate, reset on Back
-  audio.js            synthesised rain + lofi loop
+  audio.js            synthesised rain, lofi loop, shutter, can, train
+  photo.js            photo mode state, looks, capture with caption
+  vending.js          drinks bought (Cans.jsx draws them)
   sky-state.js        live Tokyo time + Open-Meteo weather, manual overrides
   ui/Overlay.jsx      title, portal tags, now playing, portal card, touch stick, loader
   ui/SkyControl.jsx   the time/weather corner and its panel
+  ui/PhotoHud.jsx     viewfinder, looks, shutter, orbit gestures
   world/
     Stage.jsx         <Canvas> with WebGPURenderer (lazy-loaded)
-    Effects.jsx       RenderPipeline: bloom + FXAA
+    Effects.jsx       RenderPipeline: bloom, FXAA, photo looks; reads back shots
     Perf.jsx          adaptive pixel ratio, ?stats overlay
     Controller.jsx    moves the cat, collisions, portal triggers
     Cat.jsx           the rigged cat, its clips, spin / jump / warp
@@ -128,7 +148,7 @@ src/
     Rooftop.jsx       tiled balcony, railing, vending machine, AC, tank, stairwell
     City.jsx          layered skyline as one mesh with shader windows, spires, beacons, アイル sign
     Atmosphere.jsx    day/night keyframes + weather → sky, fog, lights, city uniforms
-    Sky.jsx, Rain.jsx, Snow.jsx, Birds.jsx
+    Sky.jsx, Rain.jsx, Snow.jsx, Birds.jsx, Train.jsx, Cans.jsx
 ```
 
 Coming back with the browser's Back button restores the page from the

@@ -3,8 +3,11 @@ import { PORTALS } from '../config.js'
 import { enterPortal } from '../portal-nav.js'
 import { input, player, useUi } from '../store.js'
 import { jump } from '../input.js'
-import { setSound } from '../audio.js'
+import { isSoundOn, setSound } from '../audio.js'
 import SkyControl from './SkyControl.jsx'
+import PhotoHud from './PhotoHud.jsx'
+import { setPhoto } from '../photo.js'
+import { buyDrink } from '../vending.js'
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches
 const hostOf = (url) => new URL(url).host.replace(/^www\./, '')
@@ -30,6 +33,10 @@ export default function Overlay() {
   const leaving = useUi((s) => s.leaving)
   const loaded = useUi((s) => s.loaded)
   const failed = useUi((s) => s.failed)
+  const photo = useUi((s) => s.photo)
+  const vend = useUi((s) => s.vend)
+
+  if (photo && !leaving) return <PhotoHud />
 
   return (
     <>
@@ -59,7 +66,15 @@ export default function Overlay() {
       {loaded && !leaving && (
         <div className="corner">
           <SkyControl />
-          <NowPlaying />
+          <div className="corner-row">
+            <NowPlaying />
+            <button className="camera-btn" onClick={() => setPhoto(true)} aria-label="Photo mode" title="Photo mode (P)">
+              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                <path d="M4 8h3l1.6-2h6.8L17 8h3v11H4z" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+                <circle cx="12" cy="13.2" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.7" />
+              </svg>
+            </button>
+          </div>
         </div>
       )}
 
@@ -79,7 +94,14 @@ export default function Overlay() {
         </aside>
       )}
 
-      {loaded && !near && !leaving && (
+      {vend && !near && !leaving && (
+        <button className="vend-prompt" onClick={buyDrink}>
+          <kbd>E</kbd>
+          <span lang="ja">自販機</span> Buy a drink, ¥130
+        </button>
+      )}
+
+      {loaded && !near && !vend && !leaving && (
         <p className="hint">
           {coarse ? (
             'Drag the stick or tap the roof to walk'
@@ -193,9 +215,10 @@ const readPref = () => {
 // Off by default; if it was on last visit, it comes back on with the first
 // click or key press (browsers block audio before that).
 function NowPlaying() {
-  const [on, setOn] = useState(false)
+  // read from the audio engine: this unmounts during photo mode
+  const [on, setOn] = useState(isSoundOn)
   useEffect(() => {
-    if (!readPref()) return
+    if (!readPref() || isSoundOn()) return
     const wake = () => {
       setOn(true)
       setSound(true)

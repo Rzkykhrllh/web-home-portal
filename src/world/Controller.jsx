@@ -1,7 +1,7 @@
 import { useFrame } from '@react-three/fiber'
 import { MathUtils } from 'three/webgpu'
 import { CAT_RADIUS, MAX_SPEED, NEAR_DISTANCE, WALK } from '../config.js'
-import { colliders, portals, toLocal } from '../layout.js'
+import { VENDING, colliders, portals, toLocal } from '../layout.js'
 import { enterPortal } from '../portal-nav.js'
 import { input, player, uiStore } from '../store.js'
 
@@ -11,7 +11,9 @@ export default function Controller() {
   useFrame((_, dt) => {
     dt = Math.min(dt, 0.05)
     player.warp += dt
+    player.cheer += dt
     const pos = player.pos
+    const photo = uiStore.get().photo
 
     if (player.leaving >= 0) {
       // Drawn into the swirl
@@ -31,6 +33,11 @@ export default function Controller() {
     let z = (k.has('s') || k.has('arrowdown') ? 1 : 0) - (k.has('w') || k.has('arrowup') ? 1 : 0)
     x += input.stick.x
     z += input.stick.y
+    // photo mode holds the cat still so you can frame the shot
+    if (photo) {
+      x = z = 0
+      player.path = []
+    }
     let len = Math.hypot(x, z)
     if (len > 0.05) player.path = []
     else if (player.path.length) {
@@ -100,7 +107,11 @@ export default function Controller() {
         return
       }
     }
+    if (photo) near = null
     if (near !== uiStore.get().near) uiStore.set({ near })
+    // close enough to the vending machine to buy something
+    const vend = !photo && !near && Math.hypot(nx - VENDING[0], nz - (VENDING[1] + 0.95)) < 1.7
+    if (vend !== uiStore.get().vend) uiStore.set({ vend })
   })
   return null
 }

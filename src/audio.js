@@ -238,6 +238,93 @@ function hat(at, vel) {
   src.start(at, Math.random() * 2, 0.06)
 }
 
+
+/* ---------------- one-shot effects (only when sound is on) ---------------- */
+
+// A can dropping into the vending machine's tray: a dull thud and a rattle
+export function thunk() {
+  if (!ctx || !on) return
+  const at = ctx.currentTime + 0.05
+  const o = ctx.createOscillator()
+  const env = ctx.createGain()
+  o.frequency.setValueAtTime(150, at)
+  o.frequency.exponentialRampToValueAtTime(60, at + 0.15)
+  env.gain.setValueAtTime(0.0001, at)
+  env.gain.exponentialRampToValueAtTime(0.5, at + 0.005)
+  env.gain.exponentialRampToValueAtTime(0.0001, at + 0.25)
+  o.connect(env).connect(master)
+  o.start(at)
+  o.stop(at + 0.3)
+  for (let i = 0; i < 3; i++) {
+    const t = at + 0.08 + i * 0.07
+    const src = ctx.createBufferSource()
+    src.buffer = white
+    const e = ctx.createGain()
+    e.gain.setValueAtTime(0.0001, t)
+    e.gain.exponentialRampToValueAtTime(0.12 / (i + 1), t + 0.002)
+    e.gain.exponentialRampToValueAtTime(0.0001, t + 0.05)
+    src.connect(filter('bandpass', 2600, 3)).connect(e).connect(master)
+    src.start(t, Math.random() * 2, 0.06)
+  }
+}
+
+// Camera shutter: two quick clicks, the curtain opening and closing
+export function shutter() {
+  if (!ctx || !on) return
+  const at = ctx.currentTime + 0.01
+  ;[0, 0.07].forEach((d, i) => {
+    const src = ctx.createBufferSource()
+    src.buffer = white
+    const e = ctx.createGain()
+    e.gain.setValueAtTime(0.0001, at + d)
+    e.gain.exponentialRampToValueAtTime(i ? 0.25 : 0.35, at + d + 0.002)
+    e.gain.exponentialRampToValueAtTime(0.0001, at + d + 0.03)
+    src.connect(filter('bandpass', i ? 3200 : 4200, 2)).connect(e).connect(master)
+    src.start(at + d, Math.random() * 2, 0.05)
+  })
+}
+
+// The distant train: how close it is (0..1) and where (-1 left .. 1 right)
+let trainLevel = 0
+let trainPan = 0
+let trainRumble = null
+export function setTrain(level, pan) {
+  trainLevel = level
+  trainPan = pan
+  if (!ctx) return
+  if (!trainRumble) {
+    trainRumble = ctx.createGain()
+    trainRumble.gain.value = 0
+    loopNoise(noiseBuffer(3, 'brown'), [filter('lowpass', 260)], trainRumble, 1)
+    trainRumble.connect(master)
+  }
+  trainRumble.gain.setTargetAtTime(level * 0.18, ctx.currentTime, 0.2)
+}
+let nextClack = 0
+// "ta-tan, ta-tan": wheels over rail joints, scheduled with the music
+function clacks(horizon) {
+  if (trainLevel < 0.05) {
+    nextClack = horizon
+    return
+  }
+  while (nextClack < horizon) {
+    for (const d of [0, 0.11]) {
+      const at = nextClack + d
+      const src = ctx.createBufferSource()
+      src.buffer = white
+      const e = ctx.createGain()
+      e.gain.setValueAtTime(0.0001, at)
+      e.gain.exponentialRampToValueAtTime(0.2 * trainLevel, at + 0.004)
+      e.gain.exponentialRampToValueAtTime(0.0001, at + 0.09)
+      const pan = ctx.createStereoPanner()
+      pan.pan.value = trainPan
+      src.connect(filter('bandpass', 700, 1.5)).connect(e).connect(pan).connect(master)
+      src.start(at, Math.random() * 2, 0.1)
+    }
+    nextClack += 0.42
+  }
+}
+
 /* ---------------- scheduler ---------------- */
 
 // Classic look-ahead scheduling: every 50 ms, queue what falls in the next 200 ms
@@ -269,6 +356,7 @@ function schedule() {
     nextStep += eighthLength(i)
     step++
   }
+  clacks(horizon)
   // rain drops, at their own irregular pace
   while (nextDrop < horizon) {
     if (rainLevel > 0.1) {
@@ -294,6 +382,8 @@ function start() {
     else ctx.resume()
   })
 }
+
+export const isSoundOn = () => on
 
 export function setSound(enabled) {
   on = enabled
