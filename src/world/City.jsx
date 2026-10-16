@@ -265,8 +265,91 @@ export default function City() {
 
     // footprints taken so far, so buildings never grow into each other
     const taken = [{ x: 0, z: (ROOF.front + ROOF.back) / 2, rad: 13 }, { x: -13, z: -58, rad: 7 }]
+    // Roof clutter for every building, sized to it: plant rooms, cooling
+    // towers, water tanks on legs, ducts, lattice masts, a perimeter rail.
+    // Items take different quarters of the roof so they don't pile up.
+    const clutter = (r, b, cw, cd, t, s, rail, anchor) => {
+      const k = Math.min(1.6, Math.max(0.6, Math.min(cw, cd) / 8))
+      const roof = t + 0.35
+      const slots = [[-0.25, -0.22], [0.25, -0.22], [-0.25, 0.22], [0.25, 0.22]].sort(() => r() - 0.5)
+      let si = 0
+      const slot = () => {
+        const [sx, sz] = slots[si++ % 4]
+        return [sx * cw, sz * cd]
+      }
+      if (r() < 0.6) {
+        const [lx, lz] = slot()
+        const pw = cw * (0.28 + r() * 0.2)
+        const pd = cd * (0.28 + r() * 0.2)
+        const ph = (2 + r() * 1.4) * k
+        push(at(new BoxGeometry(pw, ph, pd), b, lx, roof + ph / 2, lz), s, 0)
+        push(at(new BoxGeometry(pw + 0.25, 0.22, pd + 0.25), b, lx, roof + ph + 0.11, lz), s, 1)
+        if (r() < 0.5) push(at(new BoxGeometry(pw + 0.04, ph * 0.3, pd + 0.04), b, lx, roof + ph * 0.55, lz), s, 2) // louvre band
+      }
+      if (r() < 0.3) {
+        const [lx, lz] = slot()
+        const cr = (0.7 + r() * 0.5) * k
+        const ch = (1.2 + r() * 0.8) * k
+        push(at(new CylinderGeometry(cr * 0.8, cr, ch, 12), b, lx, roof + ch / 2, lz), s, 1)
+        push(at(new CylinderGeometry(cr * 0.82, cr * 0.82, 0.18, 12), b, lx, roof + ch, lz), s, 2)
+      }
+      if (r() < 0.5) {
+        const [lx, lz] = slot()
+        const tr = (0.55 + r() * 0.45) * k
+        const th = (1.1 + r() * 0.8) * k
+        const legs = 0.9 * k
+        for (const [ox, oz] of [[-0.5, -0.5], [0.5, -0.5], [-0.5, 0.5], [0.5, 0.5]]) push(at(new BoxGeometry(0.1, legs, 0.1), b, lx + ox * tr, roof + legs / 2, lz + oz * tr), s, 2)
+        push(at(new CylinderGeometry(tr, tr, th, 12), b, lx, roof + legs + th / 2, lz), s, r() < 0.5 ? 4 : 1)
+        push(at(new CylinderGeometry(tr * 0.3, tr, 0.3 * k, 12), b, lx, roof + legs + th + 0.15 * k, lz), s, 2)
+      }
+      if (r() < 0.45) {
+        // a run of ducting across the roof
+        const dz = (r() - 0.5) * cd * 0.5
+        push(at(new BoxGeometry(cw * 0.7, 0.45 * k, 0.5 * k), b, 0, roof + 0.25 * k, dz), s, 2)
+        push(at(new BoxGeometry(0.5 * k, 0.45 * k, cd * 0.4), b, cw * 0.3, roof + 0.25 * k, dz + cd * 0.2), s, 2)
+      }
+      let top = null
+      if (r() < (t > 6 ? 0.6 : 0.4)) {
+        // lattice mast with cross bars and panel antennas
+        const [lx, lz] = slot()
+        const ah = (3 + r() * 5) * k
+        push(at(new CylinderGeometry(0.06, 0.12, ah, 5), b, lx, roof + ah / 2, lz), s, 2)
+        for (const f of [0.55, 0.8]) push(at(new BoxGeometry(1.1 * k, 0.07, 0.07), b, lx, roof + ah * f, lz), s, 2)
+        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx + 0.35 * k, roof + ah * 0.85, lz), s, 1)
+        push(at(new BoxGeometry(0.2, 0.9 * k, 0.16), b, lx - 0.35 * k, roof + ah * 0.85, lz), s, 1)
+        if (t + ah > 8) {
+          const p = at(new SphereGeometry(0.3, 8, 6), b, lx, roof + ah + 0.2, lz)
+          lights.push(p)
+        }
+        top = [lx, roof + ah * 0.8, lz]
+      }
+      if (r() < 0.4) {
+        // railing round the whole roof edge
+        const y = roof + 0.75
+        push(at(new BoxGeometry(cw * 0.96, 0.07, 0.07), b, 0, y, cd / 2 - 0.15), s, rail)
+        push(at(new BoxGeometry(cw * 0.96, 0.07, 0.07), b, 0, y, -cd / 2 + 0.15), s, rail)
+        push(at(new BoxGeometry(0.07, 0.07, cd * 0.96), b, cw / 2 - 0.15, y, 0), s, rail)
+        push(at(new BoxGeometry(0.07, 0.07, cd * 0.96), b, -cw / 2 + 0.15, y, 0), s, rail)
+      }
+      if (anchor) {
+        if (!top) {
+          // otherwise a short pole at the front corner carries the wires
+          const lx = (r() < 0.5 ? -1 : 1) * (cw / 2 - 0.3)
+          push(at(new CylinderGeometry(0.07, 0.07, 2.2, 5), b, lx, roof + 1.1, cd / 2 - 0.3), s, 2)
+          top = [lx, roof + 2.0, cd / 2 - 0.3]
+        }
+        const p = at(new BoxGeometry(0.01, 0.01, 0.01), b, ...top)
+        p.computeBoundingBox()
+        anchors.push(p.boundingBox.getCenter(new Vector3()))
+      }
+    }
+
     const add = (r, x, z, w, d, top, { detail = false, glass = false } = {}) => {
       const rad = Math.hypot(w, d) / 2
+      // keep the line of sight from the roof to the tower low
+      const tx = 29 / 126
+      const lateral = Math.abs(x - tx * (11 - z)) - rad
+      if (z < -10 && z > -105 && lateral < 6) top = Math.min(top, -7)
       if (taken.some((t) => Math.hypot(t.x - x, t.z - z) < (t.rad + rad) * 0.8)) return null
       taken.push({ x, z, rad })
       const s = seeds()
@@ -277,73 +360,70 @@ export default function City() {
       push(bodyBox(w, h, d, x, top, z, rot), s, glass ? 6 : 0, fh)
       // white coping round the roof edge, the poster's signature highlight
       push(box(w + 0.3, 0.35, d + 0.3, x, top + 0.17, z, rot), s, 1)
-      if (glass) {
-        if (top > 12) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.8, z))
-        return b
+      // taller buildings step back in one or two tiers, each with its coping
+      let t = top
+      let cw = w
+      let cd = d
+      // (not the close neighbours: they'd wall off the view)
+      if (top > 2 && !detail && r() < 0.6) {
+        const tiers = r() < 0.4 ? 2 : 1
+        for (let i = 0; i < tiers; i++) {
+          const nw = cw * (0.6 + r() * 0.2)
+          const nd = cd * (0.6 + r() * 0.2)
+          const ox = (r() - 0.5) * (cw - nw) * 0.6
+          const th = fh * (1 + Math.floor(r() * 3))
+          const c = Math.cos(rot)
+          const sn = Math.sin(rot)
+          const tb = { ...b, x: b.x + ox * c, z: b.z - ox * sn, w: nw, d: nd }
+          push(bodyBox(nw, th, nd, tb.x, t + th, tb.z, rot), s, glass ? 6 : 0, fh)
+          push(box(nw + 0.3, 0.35, nd + 0.3, tb.x, t + th + 0.17, tb.z, rot), s, 1)
+          Object.assign(b, { x: tb.x, z: tb.z })
+          cw = nw
+          cd = nd
+          t += th
+        }
       }
-      if (!detail) return b
       const rail = r() < 0.6 ? 3 : 1
+      if (glass) {
+        // glass towers: a dark crown band and a mast
+        push(box(cw * 0.8, 1.6, cd * 0.8, b.x, t + 0.8, b.z, rot), s, 2)
+        if (r() < 0.6) {
+          const ah = 5 + r() * 8
+          push(new CylinderGeometry(0.1, 0.25, ah, 5).translate(b.x, t + 1.6 + ah / 2, b.z), s, 2)
+          lights.push(new SphereGeometry(0.4, 8, 6).translate(b.x, t + 1.8 + ah, b.z))
+        }
+        return { x, z, w, d, top, rot }
+      }
+      clutter(r, b, cw, cd, t, s, rail, detail)
+      const base = { x, z, w, d, top, rot, fh, s }
+      if (!detail) return base
       if (r() < 0.45) {
         // apartment block: a balcony on every floor, green or white rails
         const floors = Math.min(6, Math.floor((top + 14) / fh))
         for (let k = 1; k <= floors; k++) {
           const y = top - k * fh + 0.05
-          push(at(new BoxGeometry(w * 0.86, 0.14, 0.8), b, 0, y, d / 2 + 0.4), s, 1)
-          push(at(new BoxGeometry(w * 0.86, 0.6, 0.05), b, 0, y + 0.37, d / 2 + 0.78), s, rail)
-          if (r() < 0.6) push(at(new BoxGeometry(0.7, 0.5, 0.35), b, (r() - 0.5) * w * 0.7, y + 0.32, d / 2 + 0.45), s, 1)
+          push(at(new BoxGeometry(w * 0.86, 0.14, 0.8), base, 0, y, d / 2 + 0.4), s, 1)
+          push(at(new BoxGeometry(w * 0.86, 0.6, 0.05), base, 0, y + 0.37, d / 2 + 0.78), s, rail)
+          if (r() < 0.6) push(at(new BoxGeometry(0.7, 0.5, 0.35), base, (r() - 0.5) * w * 0.7, y + 0.32, d / 2 + 0.45), s, 1)
         }
       } else {
         // offices and shops: AC units hung on the wall and a drainpipe
         const nAc = 2 + Math.floor(r() * 5)
         for (let k = 0; k < nAc; k++) {
           const y = top - (1 + Math.floor(r() * 5)) * fh + 0.35
-          push(at(new BoxGeometry(0.75, 0.55, 0.32), b, (r() - 0.5) * (w - 1.2), y, d / 2 + 0.16), s, 1)
+          push(at(new BoxGeometry(0.75, 0.55, 0.32), base, (r() - 0.5) * (w - 1.2), y, d / 2 + 0.16), s, 1)
         }
-        push(at(new BoxGeometry(0.14, 14, 0.14), b, w / 2 - 0.3, top - 7, d / 2 + 0.08), s, 2)
+        push(at(new BoxGeometry(0.14, 14, 0.14), base, w / 2 - 0.3, top - 7, d / 2 + 0.08), s, 2)
       }
-      // the roof: stair hut, water tank on legs, antennas, plants, a railing
-      const roof = top + 0.35
-      if (r() < 0.4) {
-        const hw = Math.min(2.4, w * 0.35)
-        const lx = (r() - 0.5) * (w - hw) * 0.6
-        push(at(new BoxGeometry(hw, 2.2, hw), b, lx, roof + 1.1, -d * 0.15), s, 0, fh) // no windows: face 2 by default
-        push(at(new BoxGeometry(hw + 0.2, 0.2, hw + 0.2), b, lx, roof + 2.3, -d * 0.15), s, 1)
-      }
-      if (r() < 0.5) {
-        const tr = 0.6 + r() * 0.5
-        const th = 1.1 + r() * 0.8
-        const lx = (r() - 0.5) * (w - 2.5)
-        const lz = (r() - 0.5) * (d - 2.5)
-        for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) push(at(new BoxGeometry(0.08, 0.9, 0.08), b, lx + ox * tr, roof + 0.45, lz + oz * tr), s, 2)
-        push(at(new CylinderGeometry(tr, tr, th, 10), b, lx, roof + 0.9 + th / 2, lz), s, r() < 0.5 ? 4 : 1)
-      }
-      if (r() < 0.45) {
-        const ah = 2.5 + r() * 3
-        const lx = (r() - 0.5) * (w - 1)
-        const lz = (r() - 0.5) * (d - 1)
-        push(at(new CylinderGeometry(0.06, 0.08, ah, 5), b, lx, roof + ah / 2, lz), s, 2)
-        push(at(new BoxGeometry(1.0, 0.06, 0.06), b, lx, roof + ah * 0.8, lz), s, 2)
-        push(at(new BoxGeometry(0.18, 0.9, 0.18), b, lx + 0.25, roof + ah * 0.85, lz), s, 1)
-        const p = at(new BoxGeometry(0.01, 0.01, 0.01), b, lx, roof + ah * 0.8, lz)
-        p.computeBoundingBox()
-        anchors.push(p.boundingBox.getCenter(new Vector3()))
-      } else {
-        // otherwise a short pole at the front corner carries the wires
-        const lx = (r() < 0.5 ? -1 : 1) * (w / 2 - 0.3)
-        push(at(new CylinderGeometry(0.07, 0.07, 2.2, 5), b, lx, roof + 1.1, d / 2 - 0.3), s, 2)
-        const p = at(new BoxGeometry(0.01, 0.01, 0.01), b, lx, roof + 2.0, d / 2 - 0.3)
-        p.computeBoundingBox()
-        anchors.push(p.boundingBox.getCenter(new Vector3()))
-      }
+      // a few potted plants along the front of the roof
       const nPlants = r() < 0.5 ? 1 + Math.floor(r() * 3) : 0
       for (let k = 0; k < nPlants; k++) {
         const pr = 0.35 + r() * 0.45
         const g = new IcosahedronGeometry(pr, 0)
         g.scale(1, 0.8, 1)
-        push(at(g, b, (r() - 0.5) * (w - 1), roof + pr * 0.6, d / 2 - 0.6), s, 5)
+        push(at(g, base, (r() - 0.5) * (w - 1), t + 0.35 + pr * 0.6, d / 2 - 0.6), s, 5)
       }
-      if (r() < 0.3) push(at(new BoxGeometry(w * 0.9, 0.06, 0.06), b, 0, roof + 0.8, d / 2 - 0.15), s, rail)
-      return b
+      return base
     }
 
     const front = []
@@ -401,7 +481,7 @@ export default function City() {
 
     // power lines: two sagging wires between nearby poles and antennas
     const wirePts = []
-    const sorted = anchors.filter((p) => p.z < 0 || Math.abs(p.x) > 15).sort((p, q) => Math.atan2(p.z, p.x) - Math.atan2(q.z, q.x))
+    const sorted = anchors.filter((p) => (p.z < 0 || Math.abs(p.x) > 15) && p.y < 9).sort((p, q) => Math.atan2(p.z, p.x) - Math.atan2(q.z, q.x))
     for (let i = 0; i < sorted.length - 1; i++) {
       const p = sorted[i]
       const q = sorted[i + 1]
@@ -451,6 +531,7 @@ export default function City() {
     push(bodyBox(W, 40, D, 0, -0.2, (ROOF.front + ROOF.back) / 2), 0.35, 0, 2.6)
     push(bodyBox(12, 76, 8, -13, 16, -58), 0.12, 0, 2.4)
     push(box(12.3, 0.35, 8.3, -13, 16.17, -58), 0.12, 1)
+    clutter(rng(13), { x: -13, z: -58, rot: 0 }, 12, 8, 16, 0.12, 1, false)
 
     const flat = parts.map(({ g, s, kind, fh }) => posterize(g, kind, s, fh))
     return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires }
