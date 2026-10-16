@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { BoxGeometry, Color, CylinderGeometry } from 'three/webgpu'
 import { ROOF } from '../config.js'
-import { AC_UNITS, SHED, TANK, VENDING } from '../layout.js'
+import { AC_UNITS, BENCH, PLANTS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
 import { U, atmos } from './Atmosphere.jsx'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
@@ -77,6 +77,10 @@ export default function Rooftop() {
       ))}
       <WaterTank position={[TANK[0], 0, TANK[1]]} />
       <Stairwell position={[SHED[0], 0, SHED[1]]} />
+      {PLANTS.map(([x, z, s], i) => (
+        <Plant key={i} position={[x, 0, z]} scale={s} seed={i} />
+      ))}
+      <Bench position={[BENCH[0], 0, BENCH[1]]} rotation-y={Math.PI} />
     </group>
   )
 }
@@ -88,19 +92,20 @@ function Parapet() {
     const T = 0.3
     const at = (g, x, y, z) => g.translate(x, y, z)
     const walls = mergeGeometries([
-      // back, left, right: full height; front: a low lip so the camera sees over it
+      // all four sides (the normal camera sits beyond the front edge and looks over it)
       at(new BoxGeometry(W + T * 2, H, T), 0, H / 2, ROOF.back - T / 2),
       at(new BoxGeometry(T, H, D), -ROOF.x - T / 2, H / 2, CZ),
       at(new BoxGeometry(T, H, D), ROOF.x + T / 2, H / 2, CZ),
-      at(new BoxGeometry(W + T * 2, 0.24, T), 0, 0.12, ROOF.front + T / 2),
+      at(new BoxGeometry(W + T * 2, H, T), 0, H / 2, ROOF.front + T / 2),
     ])
     const spots = []
-    for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 0.5) spots.push([x, ROOF.back - T / 2])
+    for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 0.5) spots.push([x, ROOF.back - T / 2], [x, ROOF.front + T / 2])
     for (let z = ROOF.back + 0.5; z <= ROOF.front; z += 0.5) spots.push([-ROOF.x - T / 2, z], [ROOF.x + T / 2, z])
     const posts = mergeGeometries(spots.map(([x, z]) => at(new CylinderGeometry(0.025, 0.025, 1, 6), x, H + 0.5, z)))
     const rail = (len) => new CylinderGeometry(0.035, 0.035, len, 6).rotateZ(Math.PI / 2)
     const rails = mergeGeometries([
       at(rail(W), 0, H + 1, ROOF.back - T / 2),
+      at(rail(W), 0, H + 1, ROOF.front + T / 2),
       at(rail(D).rotateY(Math.PI / 2), -ROOF.x - T / 2, H + 1, CZ),
       at(rail(D).rotateY(Math.PI / 2), ROOF.x + T / 2, H + 1, CZ),
     ])
@@ -254,6 +259,55 @@ function Stairwell(props) {
         <boxGeometry args={[0.7, 0.06, 0.08]} />
         <meshBasicMaterial color={glow('#eaf4ff', 3)} toneMapped={false} />
       </mesh>
+    </group>
+  )
+}
+
+// Potted plants in the front corners: a pot and a few leafy clumps
+function Plant({ seed, ...props }) {
+  const greens = ['#3f7a4a', '#4f8d55', '#356b46']
+  return (
+    <group {...props}>
+      <mesh position-y={0.28}>
+        <cylinderGeometry args={[0.3, 0.24, 0.56, 14]} />
+        <meshStandardMaterial color={seed % 2 ? '#b0623c' : '#8a8f9a'} roughness={0.8} />
+      </mesh>
+      {[
+        [0, 0.85, 0, 0.36],
+        [0.18, 1.05, 0.08, 0.28],
+        [-0.16, 1.0, -0.1, 0.26],
+      ].map(([x, y, z, r], i) => (
+        <mesh key={i} position={[x, y, z]}>
+          <icosahedronGeometry args={[r, 1]} />
+          <meshStandardMaterial color={greens[(seed + i) % 3]} roughness={0.9} flatShading />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+// A slatted bench facing the city
+function Bench(props) {
+  return (
+    <group {...props}>
+      {[-0.7, 0.7].map((x) => (
+        <mesh key={x} position={[x, 0.22, 0]}>
+          <boxGeometry args={[0.08, 0.44, 0.42]} />
+          <meshStandardMaterial color="#3a3f4a" metalness={0.6} roughness={0.4} />
+        </mesh>
+      ))}
+      {[-0.13, 0, 0.13].map((z) => (
+        <mesh key={z} position={[0, 0.46, z]}>
+          <boxGeometry args={[1.7, 0.05, 0.1]} />
+          <meshStandardMaterial color="#9a6a42" roughness={0.8} />
+        </mesh>
+      ))}
+      {[0.62, 0.78].map((y) => (
+        <mesh key={y} position={[0, y, -0.22]} rotation-x={-0.12}>
+          <boxGeometry args={[1.7, 0.08, 0.04]} />
+          <meshStandardMaterial color="#9a6a42" roughness={0.8} />
+        </mesh>
+      ))}
     </group>
   )
 }

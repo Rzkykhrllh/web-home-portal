@@ -1,8 +1,8 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, BufferAttribute, Color, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshStandardNodeMaterial, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionWorld, select, smoothstep, step, vec2 } from 'three/tsl'
+import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, smoothstep, step, uv, vec2 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { U } from './Atmosphere.jsx'
@@ -103,6 +103,20 @@ export default function City() {
       const dist = 120 + r() * 70
       add(dist, Math.cos(a) * dist, Math.sin(a) * dist, 7 + r() * 12, 7 + r() * 12, r() < 0.15 ? 14 + r() * 16 : -8 + r() * 22)
     }
+    // and the half behind the camera, so photo mode can look all the way round
+    const rf = rng(77)
+    for (let i = 0; i < 60; i++) {
+      const a = Math.PI * (0.02 + rf() * 0.96)
+      const dist = 30 + rf() * 80
+      const top = dist < 48 ? -22 + rf() * 14 : rf() < 0.15 ? 2 + rf() * 14 : -16 + rf() * 20
+      parts.push(box(5 + rf() * 9, top + 80, 5 + rf() * 9, Math.cos(a) * dist, top - (top + 80) / 2, Math.sin(a) * dist + 6, (rf() - 0.5) * 0.25))
+    }
+    for (let i = 0; i < 70; i++) {
+      const a = Math.PI * (0.08 + rf() * 0.84)
+      const dist = 120 + rf() * 70
+      const top = rf() < 0.15 ? 14 + rf() * 16 : -8 + rf() * 22
+      parts.push(box(7 + rf() * 12, top + 80, 7 + rf() * 12, Math.cos(a) * dist, top - (top + 80) / 2, Math.sin(a) * dist, (rf() - 0.5) * 0.25))
+    }
     // the building we're standing on, and the one carrying the big sign
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
@@ -124,6 +138,7 @@ export default function City() {
       <mesh geometry={geometry} material={cityMaterial} />
       <Beacons geometry={beacons} />
       <BigSign />
+      <Tower position={[-46, -60, 165]} />
     </group>
   )
 }
@@ -164,5 +179,58 @@ function BigSign() {
       <planeGeometry args={[3, 10.8]} />
       <meshBasicMaterial map={tex} color={tint} toneMapped={false} />
     </mesh>
+  )
+}
+
+// A red-and-white lattice broadcast tower far off on the other side of the
+// city: you only see it in photo mode, turning round. Banded red and white by
+// day, floodlit orange at night; the lattice is cut out of a tapered shell.
+function Tower(props) {
+  const shell = useMemo(() => {
+    const m = new MeshStandardNodeMaterial({ roughness: 0.6, side: DoubleSide, alphaTest: 0.5, transparent: false })
+    const y = positionLocal.y
+    const band = step(0.5, fract(y.div(9)))
+    const paint = mix(color('#f2f2ee'), color('#e0452e'), band)
+    // diagonal lattice: keep thin bars, cut out the gaps
+    const u = uv().x.mul(16)
+    const v = y.div(3.2)
+    const d1 = fract(u.add(v))
+    const d2 = fract(u.sub(v))
+    const bars = step(0.86, d1).add(step(0.86, d2)).add(step(0.9, fract(v))).add(step(0.94, fract(u))).clamp(0, 1)
+    m.colorNode = paint
+    m.opacityNode = bars
+    // floodlights at night
+    m.emissiveNode = mix(color('#ff8a3a'), color('#ffd29a'), band.oneMinus().mul(0.5)).mul(U.windows.mul(1.6))
+    return m
+  }, [])
+  const solid = useMemo(() => {
+    const m = new MeshStandardNodeMaterial({ roughness: 0.5 })
+    m.colorNode = color('#e9e9e4')
+    m.emissiveNode = color('#ffb46a').mul(U.windows.mul(1.2))
+    return m
+  }, [])
+  const blink = useMemo(() => new MeshBasicMaterial({ color: new Color('#ff3030').multiplyScalar(4), toneMapped: false }), [])
+  return (
+    <group {...props}>
+      {/* legs flaring out at the base, then the slim upper mast */}
+      <mesh position-y={40} material={shell}>
+        <cylinderGeometry args={[4, 16, 80, 4, 1, true]} />
+      </mesh>
+      <mesh position-y={102} material={shell}>
+        <cylinderGeometry args={[1.2, 4, 44, 4, 1, true]} />
+      </mesh>
+      <mesh position-y={78} material={solid} rotation-y={Math.PI / 4}>
+        <boxGeometry args={[11, 4, 11]} />
+      </mesh>
+      <mesh position-y={110} material={solid} rotation-y={Math.PI / 4}>
+        <boxGeometry args={[5, 2.2, 5]} />
+      </mesh>
+      <mesh position-y={130} material={solid}>
+        <cylinderGeometry args={[0.25, 0.6, 12, 6]} />
+      </mesh>
+      <mesh position-y={136.5} material={blink}>
+        <sphereGeometry args={[0.7, 8, 6]} />
+      </mesh>
+    </group>
   )
 }

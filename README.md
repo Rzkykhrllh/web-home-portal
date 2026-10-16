@@ -88,6 +88,10 @@ Natural, Film (faded and warm) or Mono, each with grain and a vignette, and
 press the shutter (or Space). The frame is saved as a PNG with a small
 caption: "frame by airu", the time and the weather. Esc to leave.
 
+The city goes all the way round for this: turn the camera and there's skyline
+behind you too, a red-and-white lattice broadcast tower in the distance
+(floodlit at night), and a bench and potted plants by the front railing.
+
 ## Also on the roof
 
 - **Vending machine**: walk up to it and press E (or tap the prompt) to buy a

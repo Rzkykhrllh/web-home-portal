@@ -33,6 +33,12 @@ export const AC_UNITS = [
 ]
 export const TANK = [8.6, -6.9]
 export const SHED = [-8.7, -6.9] // stairwell hut
+export const PLANTS = [
+  [-9.4, 6.4, 1.1],
+  [-8.5, 6.6, 0.85],
+  [9.4, 4.4, 1],
+]
+export const BENCH = [8.4, 6.6]
 
 // Round obstacles the cat bumps into: [x, z, radius]
 export const colliders = [
@@ -40,6 +46,9 @@ export const colliders = [
   ...AC_UNITS.map(([x, z]) => [x, z, 0.75]),
   [TANK[0], TANK[1], 1.3],
   [SHED[0], SHED[1], 1.5],
+  ...PLANTS.map(([x, z, s]) => [x, z, 0.32 * s]),
+  [BENCH[0] - 0.5, BENCH[1], 0.35],
+  [BENCH[0] + 0.5, BENCH[1], 0.35],
   // the two posts of each portal
   ...portals.flatMap((p) => [-1.2, 1.2].map((lx) => [...fromLocal(p, lx, 0), 0.25])),
   // and the pole of its neon sign
