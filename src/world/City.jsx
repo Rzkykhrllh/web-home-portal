@@ -22,6 +22,27 @@ const pick = (list, t) => {
   return c
 }
 
+// how much daylight the poster gets, and its night colour (shared with the rooftop)
+export const posterDay = U.day.max(U.sun.mul(0.6))
+export const posterNight = U.far.mul(1.05).add(0.015)
+export const posterLight = mix(posterNight, vec3(1), posterDay)
+
+// Give any geometry the attributes cityMaterial reads. Faces get no windows
+// unless the geometry already carries a layout (see bodyBox).
+export function posterize(g, kind = 0, seed = 0.35, fh = 2.4) {
+  const f = g.index ? g.toNonIndexed() : g
+  const n = f.attributes.position.count
+  const fill = (name, size, v) => f.setAttribute(name, new BufferAttribute(new Float32Array(n * size).fill(v), size))
+  fill('bseed', 1, seed)
+  fill('kind', 1, kind)
+  fill('fh', 1, fh)
+  if (!f.attributes.lpos) fill('lpos', 3, 0)
+  if (!f.attributes.face) fill('face', 1, 2)
+  if (!f.attributes.span) fill('span', 1, 0)
+  if (!f.attributes.uv) fill('uv', 2, 0)
+  return f
+}
+
 export const cityMaterial = (() => {
   const m = new MeshBasicNodeMaterial()
   const n = normalWorld
@@ -44,23 +65,34 @@ export const cityMaterial = (() => {
   const roofCol = select(kind.lessThan(0.5), color('#cfc8bf'), base.mul(1.12))
 
   // windows on the walls of ordinary buildings
-  const isBody = step(kind, 0.5).mul(wall)
-  const along = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
-  const cellW = mix(1.0, 1.8, fract(seed.mul(7.13)))
-  const cell = vec2(along.div(cellW), positionWorld.y.div(fh))
-  const id = floor(cell)
-  const f = fract(cell)
+  // Windows are laid out on each face of each building, in its own frame:
+  // a whole number of columns centred on the face with a margin at the
+  // corners, and floors counted down from just under the roof, so nothing
+  // is ever cut in half at an edge.
+  const lp = attribute('lpos', 'vec3')
+  const face = attribute('face', 'float') // 0 front/back, 1 sides, 2 no windows
+  const span = attribute('span', 'float')
+  const along = select(face.lessThan(0.5), lp.x, lp.z)
+  const usable = span.sub(1.0).max(0.5)
+  const cols = floor(usable.div(mix(1.0, 1.8, fract(seed.mul(7.13))))).max(1)
+  const u = along.add(usable.mul(0.5)).div(usable.div(cols))
+  const v = lp.y.negate().sub(0.75).div(fh)
+  const inside = step(0, u).mul(step(u, cols)).mul(step(0, v))
+  const isBody = step(kind, 0.5).mul(step(face, 1.5)).mul(wall).mul(inside)
+  const id = vec2(floor(u), floor(v))
+  const f = vec2(fract(u), fract(v).oneMinus())
   const inBox = (x0, x1, y0, y1) => step(x0, f.x).mul(step(f.x, x1)).mul(step(y0, f.y)).mul(step(f.y, y1))
-  const frame = inBox(0.18, 0.82, 0.22, 0.78).mul(isBody)
-  const pane = inBox(0.24, 0.76, 0.3, 0.72).mul(isBody)
+  const frame = inBox(0.16, 0.84, 0.22, 0.8).mul(isBody)
+  const pane = inBox(0.22, 0.78, 0.3, 0.74).mul(isBody)
   const slab = step(f.y, 0.07).mul(isBody)
   const rnd = hash(id.x.mul(17.1).add(id.y.mul(311.7)).add(seed.mul(37.0)))
   const glint = step(fract(f.x.add(f.y.mul(0.6)).add(rnd)), 0.22)
   const glassCol = select(rnd.greaterThan(0.82), color('#e8dcc4'), mix(color('#2f4468'), color('#6f8fc4'), glint))
   // glass towers: curtain wall with vertical mullions and a diagonal sheen
   const isGlass = step(5.5, kind).mul(wall)
-  const mull = step(0.9, fract(along.div(1.4)))
-  const sheen = step(0.7, fract(positionWorld.y.mul(0.04).add(along.mul(0.02)).add(seed)))
+  const gAlong = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
+  const mull = step(0.9, fract(gAlong.div(1.4)))
+  const sheen = step(0.7, fract(positionWorld.y.mul(0.04).add(gAlong.mul(0.02)).add(seed)))
   const curtain = mix(mix(color('#7f9cc8'), color('#b8cbe6'), sheen), color('#5a6e96'), mull)
 
   const wallCol = mix(mix(base.mul(mix(1, 0.88, slab)), color('#f1e9dd'), frame), glassCol, pane)
@@ -71,15 +103,15 @@ export const cityMaterial = (() => {
   const flat = select(top.greaterThan(0.5), roofCol, select(strong.greaterThan(0.5), strongCol, select(shade.greaterThan(0.5), shadeCol, lit)))
 
   // night: the poster goes dark blue, lights come on in some windows
-  const light = U.day.max(U.sun.mul(0.6))
-  const night = U.far.mul(1.05).add(0.015)
+  const light = posterDay
+  const night = posterNight
   const dusk = mix(vec3(1), U.hor, light.oneMinus().mul(0.35).mul(strong.add(0.5).min(1)))
   const shaded = flat.mul(mix(night, dusk, light))
-  const block = floor(along.div(9))
+  const block = floor(id.x.div(4))
   const floorLit = hash(id.y.mul(13.7).add(block.mul(71.3)).add(seed.mul(91.0)))
   const on = step(rnd, mix(0.05, 0.65, step(0.45, floorLit))).mul(pane)
   const warm = select(fract(rnd.mul(7.0)).lessThan(0.7), color('#ffcf7a'), color('#ffa860'))
-  const glassNight = isGlass.mul(step(0.55, hash(floor(along.div(1.4)).add(floor(positionWorld.y.div(2.4)).mul(57.0)).add(seed)))).mul(0.6)
+  const glassNight = isGlass.mul(step(0.55, hash(floor(gAlong.div(1.4)).add(floor(positionWorld.y.div(2.4)).mul(57.0)).add(seed)))).mul(0.6)
   m.colorNode = shaded.add(warm.mul(on.add(glassNight)).mul(1.25).mul(U.windows))
   return m
 })()
@@ -87,6 +119,29 @@ export const cityMaterial = (() => {
 const box = (w, h, d, x, y, z, rot = 0) => {
   const g = new BoxGeometry(w, h, d)
   g.applyMatrix4(new Matrix4().compose(new Vector3(x, y, z), new Quaternion().setFromEuler(new Euler(0, rot, 0)), new Vector3(1, 1, 1)))
+  return g
+}
+
+// A building body with its top at `top`: every vertex remembers where it
+// sits on its own building (lpos, relative to the top centre), which face
+// it is on, and how wide that face is, for the window layout in the shader.
+const bodyBox = (w, h, d, x, top, z, rot = 0) => {
+  const g = new BoxGeometry(w, h, d).translate(0, -h / 2, 0).toNonIndexed()
+  const pos = g.attributes.position
+  const nor = g.attributes.normal
+  const n = pos.count
+  const face = new Float32Array(n)
+  const span = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    const ax = Math.abs(nor.getX(i))
+    const ay = Math.abs(nor.getY(i))
+    face[i] = ay > 0.5 ? 2 : ax > 0.5 ? 1 : 0
+    span[i] = ax > 0.5 ? d : w
+  }
+  g.setAttribute('lpos', new BufferAttribute(new Float32Array(pos.array), 3))
+  g.setAttribute('face', new BufferAttribute(face, 1))
+  g.setAttribute('span', new BufferAttribute(span, 1))
+  g.applyMatrix4(new Matrix4().compose(new Vector3(x, top, z), new Quaternion().setFromEuler(new Euler(0, rot, 0)), new Vector3(1, 1, 1)))
   return g
 }
 
@@ -208,13 +263,18 @@ export default function City() {
       return g
     }
 
+    // footprints taken so far, so buildings never grow into each other
+    const taken = [{ x: 0, z: (ROOF.front + ROOF.back) / 2, rad: 13 }, { x: -13, z: -58, rad: 7 }]
     const add = (r, x, z, w, d, top, { detail = false, glass = false } = {}) => {
+      const rad = Math.hypot(w, d) / 2
+      if (taken.some((t) => Math.hypot(t.x - x, t.z - z) < (t.rad + rad) * 0.8)) return null
+      taken.push({ x, z, rad })
       const s = seeds()
       const rot = (r() - 0.5) * 0.2
       const fh = 2.0 + r() * 0.9
       const h = top + 60
       const b = { x, z, w, d, top, rot, fh, s }
-      push(box(w, h, d, x, top - h / 2, z, rot), s, glass ? 6 : 0, fh)
+      push(bodyBox(w, h, d, x, top, z, rot), s, glass ? 6 : 0, fh)
       // white coping round the roof edge, the poster's signature highlight
       push(box(w + 0.3, 0.35, d + 0.3, x, top + 0.17, z, rot), s, 1)
       if (glass) {
@@ -246,7 +306,7 @@ export default function City() {
       if (r() < 0.4) {
         const hw = Math.min(2.4, w * 0.35)
         const lx = (r() - 0.5) * (w - hw) * 0.6
-        push(at(new BoxGeometry(hw, 2.2, hw), b, lx, roof + 1.1, -d * 0.15), s, 0, fh)
+        push(at(new BoxGeometry(hw, 2.2, hw), b, lx, roof + 1.1, -d * 0.15), s, 0, fh) // no windows: face 2 by default
         push(at(new BoxGeometry(hw + 0.2, 0.2, hw + 0.2), b, lx, roof + 2.3, -d * 0.15), s, 1)
       }
       if (r() < 0.5) {
@@ -297,7 +357,8 @@ export default function City() {
         const x = side * (17 + w / 2 + r() * 4 + (i % 2) * 8)
         const z = 10 - i * 9 - r() * 3
         if (!clearOfTrain(x, z)) continue
-        front.push(add(r, x, z, w, 6 + r() * 4, -6 + r() * 8, { detail: true }))
+        const b = add(r, x, z, w, 6 + r() * 4, -6 + r() * 8, { detail: true })
+        if (b) front.push(b)
       }
     }
     // the near ring in front, just beyond the train
@@ -308,7 +369,8 @@ export default function City() {
       const z = Math.sin(a) * dist - 4
       if (!clearOfTrain(x, z)) continue
       const top = r() < 0.1 ? 1 + r() * 6 : -11 + r() * 8
-      front.push(add(r, x, z, 6 + r() * 7, 6 + r() * 7, top, { detail: dist < 70 }))
+      const b = add(r, x, z, 6 + r() * 7, 6 + r() * 7, top, { detail: dist < 70 })
+      if (b) front.push(b)
     }
     // a taller mid ring
     for (let i = 0; i < 50; i++) {
@@ -386,19 +448,11 @@ export default function City() {
     // the building we're standing on, and the one carrying the big sign
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
-    push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2), 0.35, 0, 2.6)
-    push(box(12, 76, 8, -13, -22, -58), 0.12, 0, 2.4)
+    push(bodyBox(W, 40, D, 0, -0.2, (ROOF.front + ROOF.back) / 2), 0.35, 0, 2.6)
+    push(bodyBox(12, 76, 8, -13, 16, -58), 0.12, 0, 2.4)
     push(box(12.3, 0.35, 8.3, -13, 16.17, -58), 0.12, 1)
 
-    const flat = parts.map(({ g, s, kind, fh }) => {
-      const f = g.index ? g.toNonIndexed() : g
-      const n = f.attributes.position.count
-      f.setAttribute('bseed', new BufferAttribute(new Float32Array(n).fill(s), 1))
-      f.setAttribute('kind', new BufferAttribute(new Float32Array(n).fill(kind), 1))
-      f.setAttribute('fh', new BufferAttribute(new Float32Array(n).fill(fh), 1))
-      if (!f.attributes.uv) f.setAttribute('uv', new BufferAttribute(new Float32Array(n * 2), 2))
-      return f
-    })
+    const flat = parts.map(({ g, s, kind, fh }) => posterize(g, kind, s, fh))
     return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires }
   }, [])
 

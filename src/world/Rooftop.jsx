@@ -1,6 +1,8 @@
 import { useMemo, useRef } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { BoxGeometry, Color, CylinderGeometry } from 'three/webgpu'
+import { BoxGeometry, Color, CylinderGeometry, MeshBasicNodeMaterial } from 'three/webgpu'
+import { mix, texture, uniform, uv, vec3 } from 'three/tsl'
+import { cityMaterial, posterLight, posterize } from './City.jsx'
 import { ROOF } from '../config.js'
 import { AC_UNITS, BENCH, PLANTS, SHED, TANK, VENDING } from '../layout.js'
 import { walkToPoint } from '../portal-nav.js'
@@ -13,23 +15,24 @@ const D = ROOF.front - ROOF.back
 const CZ = (ROOF.front + ROOF.back) / 2
 
 const glow = (hex, k) => new Color(hex).multiplyScalar(k)
-const SNOW_TINT = new Color(2.4, 2.4, 2.7) // multiplies the dark tile colours up towards white
+const wetU = uniform(0)
+const snowU = uniform(0)
 
-// Square floor tiles with dark grout, a few slightly off in tone like real
+// Square pale concrete tiles with grey grout, a few slightly off in tone like real
 // balcony tiles. Flat colours to match the illustrated skyline.
 function tileTexture() {
   const PX = 48 // pixels per metre
   const w = W * PX
   const h = D * PX
   return canvasTexture(w, h, (ctx) => {
-    ctx.fillStyle = '#1d2438'
+    ctx.fillStyle = '#a9a198'
     ctx.fillRect(0, 0, w, h)
     const r = rng(11)
     const T = PX // 1 m tiles
     for (let y = 0; y < h; y += T) {
       for (let x = 0; x < w; x += T) {
         const k = r()
-        ctx.fillStyle = k < 0.08 ? '#3c4a6a' : k < 0.2 ? '#334060' : '#384566'
+        ctx.fillStyle = k < 0.08 ? '#d6cfc4' : k < 0.2 ? '#c4bcb1' : '#cdc6bb'
         ctx.fillRect(x + 2, y + 2, T - 4, T - 4)
       }
     }
@@ -38,14 +41,17 @@ function tileTexture() {
 
 export default function Rooftop() {
   const gl = useThree((s) => s.gl)
-  const map = useMemo(tileTexture, [])
-  const tiles = useRef()
+  // pale concrete tiles in the poster's flat light: darker when wet, dusted
+  // white when it snows, blue at night like the rest of the city
+  const tileMat = useMemo(() => {
+    const m = new MeshBasicNodeMaterial()
+    const tex = texture(tileTexture(), uv()).rgb
+    m.colorNode = mix(tex.mul(wetU.mul(-0.3).add(1)), vec3(0.95, 0.96, 1.0), snowU.mul(0.5)).mul(posterLight)
+    return m
+  }, [])
   useFrame(() => {
-    if (!tiles.current) return
-    tiles.current.roughness = 0.72 - atmos.wet * 0.36
-    // lighter tiles in daylight, a light dusting when it snows
-    const day = 1 + U.day.value * 0.8
-    tiles.current.color.setRGB(day, day, day * 1.02).lerp(SNOW_TINT, atmos.snow * 0.45)
+    wetU.value = atmos.wet
+    snowU.value = atmos.snow
   })
 
   const onGround = (e) => {
@@ -66,8 +72,7 @@ export default function Rooftop() {
         onPointerOut={cursor('')}
       >
         <planeGeometry args={[W, D]} />
-        {/* glossy when wet so the neon catches, matte when dry (see useFrame above) */}
-        <meshStandardMaterial ref={tiles} map={map} roughness={0.7} metalness={0.15} />
+        <primitive object={tileMat} attach="material" />
       </mesh>
 
       <Parapet />
@@ -92,36 +97,39 @@ function Parapet() {
     const T = 0.3
     const at = (g, x, y, z) => g.translate(x, y, z)
     const walls = mergeGeometries([
+      // a cream coping along the top of every wall
+      at(new BoxGeometry(W + T * 2 + 0.1, 0.12, T + 0.1), 0, H + 0.06, ROOF.back - T / 2),
+      at(new BoxGeometry(T + 0.1, 0.12, D), -ROOF.x - T / 2, H + 0.06, CZ),
+      at(new BoxGeometry(T + 0.1, 0.12, D), ROOF.x + T / 2, H + 0.06, CZ),
+      at(new BoxGeometry(W + T * 2 + 0.1, 0.12, T + 0.1), 0, H + 0.06, ROOF.front + T / 2),
+    ].map((g) => posterize(g, 1)).concat([
       // all four sides (the normal camera sits beyond the front edge and looks over it)
       at(new BoxGeometry(W + T * 2, H, T), 0, H / 2, ROOF.back - T / 2),
       at(new BoxGeometry(T, H, D), -ROOF.x - T / 2, H / 2, CZ),
       at(new BoxGeometry(T, H, D), ROOF.x + T / 2, H / 2, CZ),
       at(new BoxGeometry(W + T * 2, H, T), 0, H / 2, ROOF.front + T / 2),
-    ])
+    ].map((g) => posterize(g, 0))))
     const spots = []
     for (let x = -ROOF.x; x <= ROOF.x + 0.01; x += 0.5) spots.push([x, ROOF.back - T / 2], [x, ROOF.front + T / 2])
     for (let z = ROOF.back + 0.5; z <= ROOF.front; z += 0.5) spots.push([-ROOF.x - T / 2, z], [ROOF.x + T / 2, z])
-    const posts = mergeGeometries(spots.map(([x, z]) => at(new CylinderGeometry(0.025, 0.025, 1, 6), x, H + 0.5, z)))
+    const posts = mergeGeometries(spots.map(([x, z]) => posterize(at(new CylinderGeometry(0.025, 0.025, 1, 6), x, H + 0.5, z), 3)))
     const rail = (len) => new CylinderGeometry(0.035, 0.035, len, 6).rotateZ(Math.PI / 2)
-    const rails = mergeGeometries([
-      at(rail(W), 0, H + 1, ROOF.back - T / 2),
-      at(rail(W), 0, H + 1, ROOF.front + T / 2),
-      at(rail(D).rotateY(Math.PI / 2), -ROOF.x - T / 2, H + 1, CZ),
-      at(rail(D).rotateY(Math.PI / 2), ROOF.x + T / 2, H + 1, CZ),
-    ])
+    const rails = mergeGeometries(
+      [
+        at(rail(W), 0, H + 1, ROOF.back - T / 2),
+        at(rail(W), 0, H + 1, ROOF.front + T / 2),
+        at(rail(D).rotateY(Math.PI / 2), -ROOF.x - T / 2, H + 1, CZ),
+        at(rail(D).rotateY(Math.PI / 2), ROOF.x + T / 2, H + 1, CZ),
+      ].map((g) => posterize(g, 3)),
+    )
     return { walls, posts, rails }
   }, [])
   return (
     <group>
-      <mesh geometry={walls}>
-        <meshStandardMaterial color="#26324e" roughness={0.85} />
-      </mesh>
-      <mesh geometry={posts}>
-        <meshStandardMaterial color="#3e4a68" metalness={0.6} roughness={0.4} />
-      </mesh>
-      <mesh geometry={rails}>
-        <meshStandardMaterial color="#e0a060" emissive="#e0a060" emissiveIntensity={0.3} metalness={0.6} roughness={0.35} />
-      </mesh>
+      {/* maroon walls like the building below, cream coping, green railings */}
+      <mesh geometry={walls} material={cityMaterial} />
+      <mesh geometry={posts} material={cityMaterial} />
+      <mesh geometry={rails} material={cityMaterial} />
     </group>
   )
 }
