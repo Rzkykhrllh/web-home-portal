@@ -256,6 +256,8 @@ function onFace(g, b, lx, y, out = 0.06) {
 // Built from the same poster kinds so it shares the city's one draw call;
 // only the lantern lights are a separate mesh (they glow at night).
 const SHRINE = { x: -24, z: -42, g: -2 }
+// street level: the asphalt every building and the shrine hill stands on
+export const STREET = -16
 const SQ = Math.SQRT2
 // a square frustum / pyramid, scaled to w x d at the bottom
 const hipRoof = (w, h, d, topScale, x, y, z) =>
@@ -268,12 +270,13 @@ function shrine(push, lanterns) {
   // on a plinth that runs down out of sight, with grass along the top edge
   const HW = 20
   const HD = 16
-  const wallH = 14
+  const wallH = G - STREET
   push(hipRoof(HW / 0.78, wallH, HD / 0.78, 0.78, X, G - wallH, Z), 0.5, 9)
   push(at(new BoxGeometry(HW / 0.78 + 1, 60, HD / 0.78 + 1), 0, G - wallH - 30, 0), 0.5, 9)
   push(at(new BoxGeometry(HW + 0.2, 0.25, HD + 0.2), 0, G + 0.02, 0), 0.5, 5)
   // long flight of steps down the front, with red handrails on posts
-  const steps = 10
+  // all the way down to the street at the foot of the hill
+  const steps = Math.round(wallH / 0.5)
   for (let i = 0; i < steps; i++) {
     // each step is solid down to the foot of the hill, so the flight reads as built
     const topY = G - i * 0.5
@@ -685,6 +688,8 @@ export default function City() {
 
     const lanternGeos = []
     shrine(push, lanternGeos)
+    // the street: one asphalt plane under the whole city
+    push(new PlaneGeometry(900, 900).rotateX(-Math.PI / 2).translate(0, STREET, 0), 0.5, 2)
 
     const flat = parts.map(({ g, s, kind, fh }) => posterize(g, kind, s, fh))
     return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires, lanterns: mergeGeometries(lanternGeos) }
