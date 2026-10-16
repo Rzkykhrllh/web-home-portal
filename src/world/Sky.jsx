@@ -54,11 +54,13 @@ export default function Sky() {
       // denser towards the horizon, taller by day and when overcast
       const rise = smoothstep(mix(0.16, 0.34, U.day).add(U.overcast.mul(0.6)), 0.02, h)
       const dens = n.add(rise.mul(0.35)).sub(0.22)
-      const threshold = mix(mix(0.52, 0.44, U.day), 0.22, U.overcast)
-      const cover = smoothstep(threshold, threshold.add(0.12), dens).mul(smoothstep(0.012, 0.04, h))
+      const threshold = mix(mix(0.52, 0.55, U.day), 0.22, U.overcast)
+      // crisp poster edges instead of soft vapour
+      const cover = smoothstep(threshold, threshold.add(0.02), dens).mul(smoothstep(0.012, 0.02, h))
       // lit from above and from the sun's side: compare with a sample nudged that way
       const nUp = mx_noise_float(q.add(vec3(U.sunDir.x.mul(0.25), 0.35, 0))).mul(0.5).add(0.5)
-      const light = n.sub(nUp).mul(3.0).add(0.55).clamp(0, 1)
+      // two flat tones, with a thin mid band, like a cut-paper cloud
+      const light = smoothstep(0.46, 0.5, n.sub(nUp).mul(3.0).add(0.55)).mul(0.75).add(smoothstep(0.7, 0.74, n.sub(nUp).mul(3.0).add(0.55)).mul(0.25))
       const lit = mix(U.cloud, vec3(1.0, 0.99, 0.97), U.day.mul(0.9))
       const shade = mix(U.cloud.mul(0.7), color('#8e9cc8'), U.day)
       const cloudCol = mix(shade, lit, light).add(sunCol.mul(pow(sa, 6).mul(0.25)).mul(U.sun)) // warm rim near the sun

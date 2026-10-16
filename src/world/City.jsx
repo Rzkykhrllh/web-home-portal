@@ -1,78 +1,86 @@
 import { useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshBasicNodeMaterial, MeshStandardNodeMaterial, PlaneGeometry, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
+import { BoxGeometry, BufferAttribute, Color, DoubleSide, CylinderGeometry, Euler, Matrix4, MeshBasicMaterial, MeshBasicNodeMaterial, MeshStandardNodeMaterial, PlaneGeometry, IcosahedronGeometry, LineBasicMaterial, Float32BufferAttribute, BufferGeometry, Quaternion, SphereGeometry, Vector3 } from 'three/webgpu'
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js'
-import { abs, attribute, color, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, smoothstep, step, texture, uv, vec2 } from 'three/tsl'
+import { attribute, color, dot, floor, fract, hash, mix, normalWorld, positionLocal, positionWorld, select, step, texture, uv, vec2, vec3 } from 'three/tsl'
 import { ROOF } from '../config.js'
 import { SANS, canvasTexture, rng } from './canvasTexture.js'
 import { U } from './Atmosphere.jsx'
 
-// Lit windows, computed in the shader from world position instead of a
-// texture per building. That lets every building, plus the one under our
-// roof, share one material and one merged mesh: the whole city is a single
-// draw call. Each building carries a seed that picks its facade: punched
-// windows, office ribbon windows or a glass curtain wall, at its own floor
-// height and window width, so no two read the same.
+// Flat illustrated city, like a vector or pixel-art poster: no realistic
+// lighting, just three tones per colour (roof, sunny side, shaded side) from
+// a fixed illustrator's light at the upper left. Every building, trim, tank
+// and railing shares this one unlit material and one merged mesh; a `kind`
+// attribute picks the colour family and a per-building seed picks the
+// palette and the window pattern.
+const L = vec3(-0.53, 0.73, 0.44)
+
+const BODY = ['#c75a4a', '#7e2438', '#e8dccb', '#b9b4ae', '#a7c4b5', '#9aa6c8', '#d9a066', '#c8bfd8', '#efece4']
+const pick = (list, t) => {
+  let c = color(list[list.length - 1])
+  for (let i = list.length - 2; i >= 0; i--) c = select(t.lessThan((i + 1) / list.length), color(list[i]), c)
+  return c
+}
+
 export const cityMaterial = (() => {
-  const m = new MeshStandardNodeMaterial({ roughness: 0.95, metalness: 0 })
+  const m = new MeshBasicNodeMaterial()
   const n = normalWorld
   const seed = attribute('bseed', 'float')
-  const plain = attribute('plain', 'float') // rooftop plant and sign frames: no windows
-  const wall = step(abs(n.y), 0.5) // 1 on walls, 0 on roofs
-  // distance along the wall, whichever way it faces
+  const kind = attribute('kind', 'float')
+  const fh = attribute('fh', 'float')
+  const ndl = dot(n, L)
+  const top = step(0.5, n.y)
+  const strong = step(0.5, ndl).mul(top.oneMinus())
+  const shade = step(ndl, 0.1).mul(top.oneMinus())
+  const wall = top.oneMinus()
+
+  // colour family: 0 body, 1 trim, 2 metal, 3 green rail, 4 rust tank, 5 plant, 6 glass tower
+  const body = pick(BODY, fract(seed.mul(9.17)))
+  const base = select(
+    kind.lessThan(0.5),
+    body,
+    select(kind.lessThan(1.5), color('#f1e9dd'), select(kind.lessThan(2.5), color('#4a5068'), select(kind.lessThan(3.5), color('#4f9a62'), select(kind.lessThan(4.5), color('#a0583c'), select(kind.lessThan(5.5), color('#6aa84f'), color('#8fa8d0')))))),
+  )
+  const roofCol = select(kind.lessThan(0.5), color('#cfc8bf'), base.mul(1.12))
+
+  // windows on the walls of ordinary buildings
+  const isBody = step(kind, 0.5).mul(wall)
   const along = positionWorld.x.mul(n.z.negate()).add(positionWorld.z.mul(n.x))
-  const cellW = mix(0.75, 1.3, fract(seed.mul(7.13)))
-  const floorH = mix(1.8, 2.5, fract(seed.mul(13.31)))
-  const cell = vec2(along.div(cellW), positionWorld.y.div(floorH))
+  const cellW = mix(1.0, 1.8, fract(seed.mul(7.13)))
+  const cell = vec2(along.div(cellW), positionWorld.y.div(fh))
   const id = floor(cell)
   const f = fract(cell)
-  const style = fract(seed.mul(3.71))
-  const punched = step(0.18, f.x).mul(step(f.x, 0.82)).mul(step(0.25, f.y)).mul(step(f.y, 0.75))
-  const ribbon = step(0.04, f.x).mul(step(0.3, f.y)).mul(step(f.y, 0.72))
-  const curtain = step(0.05, f.x).mul(step(f.x, 0.95)).mul(step(0.08, f.y)).mul(step(f.y, 0.92))
-  const isRibbon = step(0.5, style).mul(step(style, 0.78))
-  const pane = select(style.lessThan(0.5), punched, select(style.lessThan(0.78), ribbon, curtain)).mul(plain.oneMinus())
-  // whole floors tend to be lit or dark together, like real offices; ribbon
-  // windows light up in long runs
+  const inBox = (x0, x1, y0, y1) => step(x0, f.x).mul(step(f.x, x1)).mul(step(y0, f.y)).mul(step(f.y, y1))
+  const frame = inBox(0.18, 0.82, 0.22, 0.78).mul(isBody)
+  const pane = inBox(0.24, 0.76, 0.3, 0.72).mul(isBody)
+  const slab = step(f.y, 0.07).mul(isBody)
+  const rnd = hash(id.x.mul(17.1).add(id.y.mul(311.7)).add(seed.mul(37.0)))
+  const glint = step(fract(f.x.add(f.y.mul(0.6)).add(rnd)), 0.22)
+  const glassCol = select(rnd.greaterThan(0.82), color('#e8dcc4'), mix(color('#2f4468'), color('#6f8fc4'), glint))
+  // glass towers: curtain wall with vertical mullions and a diagonal sheen
+  const isGlass = step(5.5, kind).mul(wall)
+  const mull = step(0.9, fract(along.div(1.4)))
+  const sheen = step(0.7, fract(positionWorld.y.mul(0.04).add(along.mul(0.02)).add(seed)))
+  const curtain = mix(mix(color('#7f9cc8'), color('#b8cbe6'), sheen), color('#5a6e96'), mull)
+
+  const wallCol = mix(mix(base.mul(mix(1, 0.88, slab)), color('#f1e9dd'), frame), glassCol, pane)
+  const lit = select(isGlass.greaterThan(0.5), curtain, wallCol)
+  // sunny side a touch warmer, shaded side darker and bluer, roofs pale
+  const strongCol = lit.mul(1.08).add(color('#1a0e00').mul(0.6))
+  const shadeCol = mix(lit.mul(0.6), color('#3a3f80'), 0.22)
+  const flat = select(top.greaterThan(0.5), roofCol, select(strong.greaterThan(0.5), strongCol, select(shade.greaterThan(0.5), shadeCol, lit)))
+
+  // night: the poster goes dark blue, lights come on in some windows
+  const light = U.day.max(U.sun.mul(0.6))
+  const night = U.far.mul(1.05).add(0.015)
+  const dusk = mix(vec3(1), U.hor, light.oneMinus().mul(0.35).mul(strong.add(0.5).min(1)))
+  const shaded = flat.mul(mix(night, dusk, light))
   const block = floor(along.div(9))
   const floorLit = hash(id.y.mul(13.7).add(block.mul(71.3)).add(seed.mul(91.0)))
-  const rid = mix(id.x, floor(id.x.div(5)), isRibbon)
-  const r = hash(rid.mul(17.1).add(id.y.mul(311.7)).add(seed.mul(37.0)))
-  const busy = mix(0.45, 1.3, fract(seed.mul(29.7))) // some buildings are half empty
-  const chance = mix(0.04, 0.6, step(0.45, floorLit)).add(step(0.8, floorLit).mul(0.15)).mul(busy)
-  const lit = step(r, chance).mul(pane).mul(wall)
-  // mostly warm yellow and orange against the blue; glass towers run cool white
-  const k = hash(id.x.add(id.y.mul(7.3)).add(3.1).add(seed))
-  const warm = select(k.lessThan(0.55), color('#ffd27a'), color('#ffa860'))
-  const tint = select(style.greaterThan(0.78), mix(color('#d8e6ff'), warm, step(0.75, k)), select(k.lessThan(0.85), warm, color('#d8e6ff')))
-  const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.6).add(0.4)
-  // Night: deep blue near, lighter far (colours follow the hour, see Atmosphere)
-  const dist = positionWorld.xz.length()
-  const nightBody = mix(U.near, U.far, smoothstep(40, 170, dist))
-  // curtain walls read a touch lighter and bluer than masonry
-  const nightWall = mix(nightBody, nightBody.mul(1.25).add(color('#0a1a3a').mul(0.3)), step(0.78, style))
-  const nightCol = mix(nightBody.mul(0.8), nightWall, wall)
-
-  // Day: each building its own pastel, fading into the haze with distance,
-  // and glass that reflects the sky
-  const pastel = select(
-    seed.lessThan(0.16),
-    color('#dccfb9'),
-    select(seed.lessThan(0.32), color('#b9c8de'), select(seed.lessThan(0.46), color('#86a2cc'), select(seed.lessThan(0.6), color('#e8e4dc'), select(seed.lessThan(0.72), color('#a7b3c6'), select(seed.lessThan(0.84), color('#d6bfb2'), color('#9db7d8')))))),
-  )
-  const dayBody = mix(pastel, U.far, smoothstep(50, 190, dist).mul(0.75))
-  const sky = mix(color('#3f78cc'), color('#cfe3ff'), fract(positionWorld.y.div(31).add(seed.mul(5))))
-  const glint = step(0.94, r).mul(0.6)
-  const glassTower = step(0.78, style).mul(plain.oneMinus())
-  const glass = mix(pane.mul(0.8), 1, glassTower).mul(wall)
-  const glassCol = mix(sky, color('#ffffff'), glint)
-  const dayCol = mix(dayBody.mul(0.86), mix(dayBody, glassCol, glass), wall)
-
-  m.colorNode = mix(nightCol, dayCol, U.day)
-  // the streets below glow orange and light the lower floors from underneath
-  const street = color('#ff8a4a').mul(smoothstep(8, 45, positionWorld.y.negate())).mul(wall).mul(0.22).mul(U.windows)
-  const windowsGlow = tint.mul(lit.mul(level).mul(U.windows))
-  m.emissiveNode = windowsGlow.mul(1.15).add(street).add(glassCol.mul(glass).mul(U.day).mul(0.3))
+  const on = step(rnd, mix(0.05, 0.65, step(0.45, floorLit))).mul(pane)
+  const warm = select(fract(rnd.mul(7.0)).lessThan(0.7), color('#ffcf7a'), color('#ffa860'))
+  const glassNight = isGlass.mul(step(0.55, hash(floor(along.div(1.4)).add(floor(positionWorld.y.div(2.4)).mul(57.0)).add(seed)))).mul(0.6)
+  m.colorNode = shaded.add(warm.mul(on.add(glassNight)).mul(1.25).mul(U.windows))
   return m
 })()
 
@@ -179,107 +187,197 @@ function onFace(g, b, lx, y, out = 0.06) {
   return g
 }
 
-// The city round the roof: a near ring of blocks, a dense far skyline,
-// setback towers with rooftop plant, antenna spires, red aircraft beacons,
-// shop signs and billboards. Plus one big sign.
+// The city round the roof, drawn like a poster: low neighbours close in
+// at about our height so their clutter reads (coping, balconies with green
+// railings, AC units, tanks, antennas, rooftop plants), power lines sagging
+// between them, taller blocks further out, and a pale skyline of towers that
+// the haze turns lavender. Plus shop signs and one big sign.
 export default function City() {
-  const { geometry, beacons, signs } = useMemo(() => {
+  const { geometry, beacons, signs, wires } = useMemo(() => {
     const parts = []
     const lights = []
+    const anchors = []
     const seeds = rng(7)
-    const add = (r, x, z, w, d, top) => {
+    const push = (g, s, kind = 0, fh = 2.4) => parts.push({ g, s, kind, fh })
+    // place a geometry relative to a building: lx along its front, lz out of it
+    const at = (g, b, lx, y, lz) => {
+      const c = Math.cos(b.rot)
+      const sn = Math.sin(b.rot)
+      g.rotateY(b.rot)
+      g.translate(b.x + lx * c + lz * sn, y, b.z - lx * sn + lz * c)
+      return g
+    }
+
+    const add = (r, x, z, w, d, top, { detail = false, glass = false } = {}) => {
       const s = seeds()
-      const rot = (r() - 0.5) * 0.25
-      const h = top + 80
-      parts.push({ g: box(w, h, d, x, top - h / 2, z, rot), s })
-      let t = top
-      let cw = w
-      let cd = d
-      // the taller ones step back as they rise
-      if (top > -4 && r() < 0.55) {
-        const tiers = r() < 0.35 ? 2 : 1
-        for (let k = 0; k < tiers; k++) {
-          cw *= 0.6 + r() * 0.2
-          cd *= 0.6 + r() * 0.2
-          const th = 2 + r() * 5
-          parts.push({ g: box(cw, th, cd, x, t + th / 2, z, rot), s })
-          t += th
+      const rot = (r() - 0.5) * 0.2
+      const fh = 2.0 + r() * 0.9
+      const h = top + 60
+      const b = { x, z, w, d, top, rot, fh, s }
+      push(box(w, h, d, x, top - h / 2, z, rot), s, glass ? 6 : 0, fh)
+      // white coping round the roof edge, the poster's signature highlight
+      push(box(w + 0.3, 0.35, d + 0.3, x, top + 0.17, z, rot), s, 1)
+      if (glass) {
+        if (top > 12) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, top + 0.8, z))
+        return b
+      }
+      if (!detail) return b
+      const rail = r() < 0.6 ? 3 : 1
+      if (r() < 0.45) {
+        // apartment block: a balcony on every floor, green or white rails
+        const floors = Math.min(6, Math.floor((top + 14) / fh))
+        for (let k = 1; k <= floors; k++) {
+          const y = top - k * fh + 0.05
+          push(at(new BoxGeometry(w * 0.86, 0.14, 0.8), b, 0, y, d / 2 + 0.4), s, 1)
+          push(at(new BoxGeometry(w * 0.86, 0.6, 0.05), b, 0, y + 0.37, d / 2 + 0.78), s, rail)
+          if (r() < 0.6) push(at(new BoxGeometry(0.7, 0.5, 0.35), b, (r() - 0.5) * w * 0.7, y + 0.32, d / 2 + 0.45), s, 1)
         }
+      } else {
+        // offices and shops: AC units hung on the wall and a drainpipe
+        const nAc = 2 + Math.floor(r() * 5)
+        for (let k = 0; k < nAc; k++) {
+          const y = top - (1 + Math.floor(r() * 5)) * fh + 0.35
+          push(at(new BoxGeometry(0.75, 0.55, 0.32), b, (r() - 0.5) * (w - 1.2), y, d / 2 + 0.16), s, 1)
+        }
+        push(at(new BoxGeometry(0.14, 14, 0.14), b, w / 2 - 0.3, top - 7, d / 2 + 0.08), s, 2)
       }
-      // rooftop plant rooms and tanks
-      const c = Math.cos(rot)
-      const sn = Math.sin(rot)
-      const nb = r() < 0.75 ? 1 + Math.floor(r() * 3) : 0
-      for (let k = 0; k < nb; k++) {
-        const bw = Math.min(cw * 0.5, 1 + r() * 2.4)
-        const bd = Math.min(cd * 0.5, 1 + r() * 2.4)
-        const bh = 0.7 + r() * 1.8
-        const ox = (r() - 0.5) * (cw - bw) * 0.8
-        const oz = (r() - 0.5) * (cd - bd) * 0.8
-        parts.push({ g: box(bw, bh, bd, x + ox * c + oz * sn, t + bh / 2, z - ox * sn + oz * c, rot), s, plain: 1 })
+      // the roof: stair hut, water tank on legs, antennas, plants, a railing
+      const roof = top + 0.35
+      if (r() < 0.4) {
+        const hw = Math.min(2.4, w * 0.35)
+        const lx = (r() - 0.5) * (w - hw) * 0.6
+        push(at(new BoxGeometry(hw, 2.2, hw), b, lx, roof + 1.1, -d * 0.15), s, 0, fh)
+        push(at(new BoxGeometry(hw + 0.2, 0.2, hw + 0.2), b, lx, roof + 2.3, -d * 0.15), s, 1)
       }
-      if (t > 10 && r() < 0.35) {
-        const sh = 4 + r() * 8
-        parts.push({ g: new CylinderGeometry(0.08, 0.5, sh, 6).translate(x, t + sh / 2, z), s, plain: 1 })
-        lights.push(new SphereGeometry(0.35, 8, 6).translate(x, t + sh + 0.3, z))
-      } else if (t > 6) lights.push(new SphereGeometry(0.35, 8, 6).translate(x, t + 0.6, z))
-      return { x, z, w, d, top, rot }
+      if (r() < 0.5) {
+        const tr = 0.6 + r() * 0.5
+        const th = 1.1 + r() * 0.8
+        const lx = (r() - 0.5) * (w - 2.5)
+        const lz = (r() - 0.5) * (d - 2.5)
+        for (const [ox, oz] of [[-0.45, -0.45], [0.45, -0.45], [-0.45, 0.45], [0.45, 0.45]]) push(at(new BoxGeometry(0.08, 0.9, 0.08), b, lx + ox * tr, roof + 0.45, lz + oz * tr), s, 2)
+        push(at(new CylinderGeometry(tr, tr, th, 10), b, lx, roof + 0.9 + th / 2, lz), s, r() < 0.5 ? 4 : 1)
+      }
+      if (r() < 0.45) {
+        const ah = 2.5 + r() * 3
+        const lx = (r() - 0.5) * (w - 1)
+        const lz = (r() - 0.5) * (d - 1)
+        push(at(new CylinderGeometry(0.06, 0.08, ah, 5), b, lx, roof + ah / 2, lz), s, 2)
+        push(at(new BoxGeometry(1.0, 0.06, 0.06), b, lx, roof + ah * 0.8, lz), s, 2)
+        push(at(new BoxGeometry(0.18, 0.9, 0.18), b, lx + 0.25, roof + ah * 0.85, lz), s, 1)
+        const p = at(new BoxGeometry(0.01, 0.01, 0.01), b, lx, roof + ah * 0.8, lz)
+        p.computeBoundingBox()
+        anchors.push(p.boundingBox.getCenter(new Vector3()))
+      } else {
+        // otherwise a short pole at the front corner carries the wires
+        const lx = (r() < 0.5 ? -1 : 1) * (w / 2 - 0.3)
+        push(at(new CylinderGeometry(0.07, 0.07, 2.2, 5), b, lx, roof + 1.1, d / 2 - 0.3), s, 2)
+        const p = at(new BoxGeometry(0.01, 0.01, 0.01), b, lx, roof + 2.0, d / 2 - 0.3)
+        p.computeBoundingBox()
+        anchors.push(p.boundingBox.getCenter(new Vector3()))
+      }
+      const nPlants = r() < 0.5 ? 1 + Math.floor(r() * 3) : 0
+      for (let k = 0; k < nPlants; k++) {
+        const pr = 0.35 + r() * 0.45
+        const g = new IcosahedronGeometry(pr, 0)
+        g.scale(1, 0.8, 1)
+        push(at(g, b, (r() - 0.5) * (w - 1), roof + pr * 0.6, d / 2 - 0.6), s, 5)
+      }
+      if (r() < 0.3) push(at(new BoxGeometry(w * 0.9, 0.06, 0.06), b, 0, roof + 0.8, d / 2 - 0.15), s, rail)
+      return b
     }
 
     const front = []
     const r = rng(42)
-    // the near ring: blocks below roof level close in, getting taller with distance
+    // the train runs across the front at z = -26: keep that strip clear
+    const clearOfTrain = (x, z) => !(z > -33 && z < -19) && !(z > -33 && Math.abs(x) < 15)
+    // close neighbours either side, a little above and below our roof
+    for (const side of [-1, 1]) {
+      for (let i = 0; i < 4; i++) {
+        const w = 6 + r() * 5
+        const x = side * (17 + w / 2 + r() * 4 + (i % 2) * 8)
+        const z = 10 - i * 9 - r() * 3
+        if (!clearOfTrain(x, z)) continue
+        front.push(add(r, x, z, w, 6 + r() * 4, -6 + r() * 8, { detail: true }))
+      }
+    }
+    // the near ring in front, just beyond the train
     for (let i = 0; i < 70; i++) {
-      const a = Math.PI * (0.02 + r() * 0.96) + Math.PI
-      const side = r() < 0.25 ? Math.PI * (r() < 0.5 ? -0.3 : 0.3) : 0
-      const dist = 28 + r() * 80
-      const x = Math.cos(a + side) * dist
-      const z = Math.sin(a + side) * dist - 4
-      // mostly under the horizon so the sky stays open, with the odd tall one
-      const top = dist < 48 ? -22 + r() * 14 : r() < 0.12 ? 2 + r() * 12 : -16 + r() * 18
-      front.push(add(r, x, z, 5 + r() * 9, 5 + r() * 9, top))
+      const a = Math.PI * (1.04 + r() * 0.92)
+      const dist = 34 + r() * 50
+      const x = Math.cos(a) * dist
+      const z = Math.sin(a) * dist - 4
+      if (!clearOfTrain(x, z)) continue
+      const top = r() < 0.1 ? 1 + r() * 6 : -11 + r() * 8
+      front.push(add(r, x, z, 6 + r() * 7, 6 + r() * 7, top, { detail: dist < 70 }))
     }
-    // the far skyline: a dense band of towers
+    // a taller mid ring
+    for (let i = 0; i < 50; i++) {
+      const a = Math.PI * (1.0 + r() * 1.0)
+      const dist = 85 + r() * 35
+      add(r, Math.cos(a) * dist, Math.sin(a) * dist, 8 + r() * 10, 8 + r() * 10, -8 + r() * 12)
+    }
+    // the far skyline: towers, some of them glass, pale in the haze
     for (let i = 0; i < 90; i++) {
-      const a = Math.PI * (-0.08 + r() * 1.16) + Math.PI
-      const dist = 120 + r() * 70
-      add(r, Math.cos(a) * dist, Math.sin(a) * dist, 7 + r() * 12, 7 + r() * 12, r() < 0.15 ? 14 + r() * 16 : -8 + r() * 22)
+      const a = Math.PI * (0.92 + r() * 1.16)
+      const dist = 130 + r() * 65
+      const top = r() < 0.25 ? 12 + r() * 18 : -2 + r() * 12
+      add(r, Math.cos(a) * dist, Math.sin(a) * dist, 8 + r() * 12, 8 + r() * 12, top, { glass: r() < 0.4 })
     }
-    // and the half behind the camera, so photo mode can look all the way round
+    // the half behind the camera, so photo mode can look all the way round
     const rf = rng(77)
-    for (let i = 0; i < 60; i++) {
-      const a = Math.PI * (0.02 + rf() * 0.96)
-      const dist = 30 + rf() * 80
-      const top = dist < 48 ? -22 + rf() * 14 : rf() < 0.15 ? 2 + rf() * 14 : -16 + rf() * 20
-      add(rf, Math.cos(a) * dist, Math.sin(a) * dist + 6, 5 + rf() * 9, 5 + rf() * 9, top)
+    for (let i = 0; i < 45; i++) {
+      const a = Math.PI * (0.04 + rf() * 0.92)
+      const dist = 30 + rf() * 55
+      const z = Math.sin(a) * dist + 10
+      add(rf, Math.cos(a) * dist, Math.max(z, 28), 6 + rf() * 7, 6 + rf() * 7, -8 + rf() * 11, { detail: dist < 60 })
     }
     for (let i = 0; i < 70; i++) {
       const a = Math.PI * (0.08 + rf() * 0.84)
       const dist = 120 + rf() * 70
-      add(rf, Math.cos(a) * dist, Math.sin(a) * dist, 7 + rf() * 12, 7 + rf() * 12, rf() < 0.15 ? 14 + rf() * 16 : -8 + rf() * 22)
+      add(rf, Math.cos(a) * dist, Math.sin(a) * dist, 8 + rf() * 12, 8 + rf() * 12, rf() < 0.25 ? 14 + rf() * 18 : 2 + rf() * 14, { glass: rf() < 0.35 })
     }
+
+    // power lines: two sagging wires between nearby poles and antennas
+    const wirePts = []
+    const sorted = anchors.filter((p) => p.z < 0 || Math.abs(p.x) > 15).sort((p, q) => Math.atan2(p.z, p.x) - Math.atan2(q.z, q.x))
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const p = sorted[i]
+      const q = sorted[i + 1]
+      const len = p.distanceTo(q)
+      if (len > 34 || len < 4) continue
+      for (const dy of [0, -0.35]) {
+        const sag = len * 0.06
+        for (let k = 0; k < 12; k++) {
+          for (const t of [k / 12, (k + 1) / 12]) {
+            wirePts.push(p.x + (q.x - p.x) * t, p.y + dy + (q.y - p.y) * t - sag * 4 * t * (1 - t), p.z + (q.z - p.z) * t)
+          }
+        }
+      }
+    }
+    const wires = new BufferGeometry()
+    wires.setAttribute('position', new Float32BufferAttribute(wirePts, 3))
 
     // signs on the buildings in view: blade signs down the upper floors,
     // billboards on frames on the roofs
     const signGeos = []
     const rs = rng(5)
     for (const b of front) {
-      if (b.top < -13 || b.z > -14) continue
+      if (b.z > -30) continue
       const roll = rs()
-      if (roll < 0.4 && b.top > -6) {
+      if (roll < 0.35) {
         const i = Math.floor(rs() * BLADES.length)
         const lx = (rs() < 0.5 ? -1 : 1) * (b.w / 2 - 1.1)
-        const y = b.top - 3.4 - rs() * 2
-        parts.push({ g: onFace(new BoxGeometry(1.5, 5.6, 0.2), b, lx, y, 0.1), s: 0.5, plain: 1 })
+        const y = b.top - 3.2
+        push(onFace(new BoxGeometry(1.5, 5.6, 0.2), b, lx, y, 0.1), 0.5, 2)
         signGeos.push(onFace(tilePlane(1.3, 5.2, i / 8, 0.5, (i + 1) / 8, 1), b, lx, y, 0.22))
-      } else if (roll < 0.85 && b.w > 5) {
+      } else if (roll < 0.47 && b.w > 6) {
         const j = Math.floor(rs() * 4)
-        const bw = Math.min(b.w * 0.8, 8)
+        const bw = Math.min(b.w * 0.8, 7)
         const bh = bw / 2
-        const y = b.top + 1.2 + bh / 2
+        const y = b.top + 1.4 + bh / 2
         const lz = -b.d / 2 + 1.5
-        for (const sx of [-0.35, 0.35]) parts.push({ g: onFace(new BoxGeometry(0.2, bh + 1.2, 0.2), b, sx * bw, b.top + (bh + 1.2) / 2, lz), s: 0.5, plain: 1 })
-        parts.push({ g: onFace(new BoxGeometry(bw + 0.3, bh + 0.3, 0.25), b, 0, y, lz + 0.1), s: 0.5, plain: 1 })
+        for (const sx of [-0.35, 0.35]) push(onFace(new BoxGeometry(0.15, bh + 1.4, 0.15), b, sx * bw, b.top + (bh + 1.4) / 2, lz), 0.5, 2)
+        push(onFace(new BoxGeometry(bw + 0.3, bh + 0.3, 0.25), b, 0, y, lz + 0.1), 0.5, 1)
         const v1 = 1 - (512 + Math.floor(j / 2) * 256) / 1024
         signGeos.push(onFace(tilePlane(bw, bh, (j % 2) * 0.5, v1 - 0.25, (j % 2) * 0.5 + 0.5, v1), b, 0, y, lz + 0.24))
       }
@@ -288,23 +386,27 @@ export default function City() {
     // the building we're standing on, and the one carrying the big sign
     const W = ROOF.x * 2 + 0.6
     const D = ROOF.front - ROOF.back + 0.6
-    parts.push({ g: box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2), s: seeds() })
-    // tall enough that the sign hangs on its face, not above the roofline
-    parts.push({ g: box(12, 76, 8, -13, -22, -58), s: 0.4 })
+    push(box(W, 40, D, 0, -20.2, (ROOF.front + ROOF.back) / 2), 0.35, 0, 2.6)
+    push(box(12, 76, 8, -13, -22, -58), 0.12, 0, 2.4)
+    push(box(12.3, 0.35, 8.3, -13, 16.17, -58), 0.12, 1)
 
-    const flat = parts.map(({ g, s, plain = 0 }) => {
-      const f = g.toNonIndexed()
+    const flat = parts.map(({ g, s, kind, fh }) => {
+      const f = g.index ? g.toNonIndexed() : g
       const n = f.attributes.position.count
       f.setAttribute('bseed', new BufferAttribute(new Float32Array(n).fill(s), 1))
-      f.setAttribute('plain', new BufferAttribute(new Float32Array(n).fill(plain), 1))
+      f.setAttribute('kind', new BufferAttribute(new Float32Array(n).fill(kind), 1))
+      f.setAttribute('fh', new BufferAttribute(new Float32Array(n).fill(fh), 1))
+      if (!f.attributes.uv) f.setAttribute('uv', new BufferAttribute(new Float32Array(n * 2), 2))
       return f
     })
-    return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos) }
+    return { geometry: mergeGeometries(flat), beacons: mergeGeometries(lights), signs: mergeGeometries(signGeos), wires }
   }, [])
 
+  const wireMat = useMemo(() => new LineBasicMaterial({ color: '#1c2236' }), [])
   return (
     <group>
       <mesh geometry={geometry} material={cityMaterial} />
+      <lineSegments geometry={wires} material={wireMat} />
       <Beacons geometry={beacons} />
       <Signs geometry={signs} />
       <BigSign />
