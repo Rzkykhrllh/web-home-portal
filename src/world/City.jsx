@@ -97,7 +97,14 @@ export const cityMaterial = (() => {
   const curtain = mix(mix(color('#7f9cc8'), color('#b8cbe6'), sheen), color('#5a6e96'), mull)
 
   const wallCol = mix(mix(base.mul(mix(1, 0.88, slab)), color('#f1e9dd'), frame), glassCol, pane)
-  const lit = select(isGlass.greaterThan(0.5), curtain, wallCol)
+  // stone (kind 9) walls: coursed blocks, staggered every other row
+  const isStone = step(8.5, kind).mul(step(kind, 9.5)).mul(wall)
+  const row = positionWorld.y.div(0.7)
+  const stag = fract(gAlong.div(1.3).add(floor(row).mul(0.5)))
+  const mortar = step(fract(row), 0.1).max(step(stag, 0.06)).mul(isStone)
+  const stoneTone = mix(1.0, 0.9, step(0.5, hash(floor(row).add(floor(gAlong.div(1.3).add(floor(row).mul(0.5))).mul(13.0))))).mul(isStone).add(isStone.oneMinus())
+  const masonry = mix(wallCol.mul(stoneTone), wallCol.mul(0.62), mortar)
+  const lit = select(isGlass.greaterThan(0.5), curtain, masonry)
   // sunny side a touch warmer, shaded side darker and bluer, roofs pale
   const strongCol = lit.mul(1.08).add(color('#1a0e00').mul(0.6))
   const shadeCol = mix(lit.mul(0.6), color('#3a3f80'), 0.22)
@@ -257,9 +264,38 @@ const hipRoof = (w, h, d, topScale, x, y, z) =>
 function shrine(push, lanterns) {
   const { x: X, z: Z, g: G } = SHRINE
   const at = (geo, x, y, z) => geo.translate(X + x, y, Z + z)
-  // the mound with a stone retaining wall, and steps up the front
-  push(at(new BoxGeometry(20, 50, 16), 0, G - 25, 0), 0.5, 9)
-  for (let i = 0; i < 4; i++) push(at(new BoxGeometry(3, 0.5, 0.6), 2, G - 0.25 - i * 0.5, 8.3 + i * 0.6), 0.5, 9)
+  // the hill: a battered stone wall (ishigaki), wider at the foot, standing
+  // on a plinth that runs down out of sight, with grass along the top edge
+  const HW = 20
+  const HD = 16
+  const wallH = 14
+  push(hipRoof(HW / 0.78, wallH, HD / 0.78, 0.78, X, G - wallH, Z), 0.5, 9)
+  push(at(new BoxGeometry(HW / 0.78 + 1, 60, HD / 0.78 + 1), 0, G - wallH - 30, 0), 0.5, 9)
+  push(at(new BoxGeometry(HW + 0.2, 0.25, HD + 0.2), 0, G + 0.02, 0), 0.5, 5)
+  // long flight of steps down the front, with red handrails on posts
+  const steps = 10
+  for (let i = 0; i < steps; i++) {
+    // each step is solid down to the foot of the hill, so the flight reads as built
+    const topY = G - i * 0.5
+    const h = topY - (G - wallH)
+    push(at(new BoxGeometry(3, h, 0.6), 2, topY - h / 2, HD / 2 - 0.2 + i * 0.55), 0.5, 1)
+  }
+  for (const sx of [-1.65, 1.65]) {
+    for (let i = 0; i <= steps; i += 4) push(at(new BoxGeometry(0.1, 0.9, 0.1), 2 + sx, G - i * 0.5 + 0.2, HD / 2 - 0.2 + i * 0.55), 0.5, 7)
+    const len = Math.hypot(steps * 0.55, steps * 0.5)
+    const rail = new BoxGeometry(0.1, 0.1, len).rotateX(Math.atan2(0.5, 0.55))
+    push(at(rail, 2 + sx, G + 0.65 - (steps * 0.5) / 2, HD / 2 - 0.2 + (steps * 0.55) / 2), 0.5, 7)
+  }
+  // precinct wall: white plaster under a tile cap, open at the torii
+  const pw = (w, d, x, z) => {
+    push(at(new BoxGeometry(w, 1.1, d), x, G + 0.55, z), 0.5, 1)
+    push(at(new BoxGeometry(w + 0.3, 0.22, d + 0.3), x, G + 1.2, z), 0.5, 8)
+  }
+  pw(HW - 0.6, 0.3, 0, -HD / 2 + 0.4)
+  pw(0.3, HD - 0.8, -HW / 2 + 0.4, 0)
+  pw(0.3, HD - 0.8, HW / 2 - 0.4, 0)
+  pw(HW / 2 - 2.6, 0.3, -HW / 4 - 0.4, HD / 2 - 0.4)
+  pw(HW / 2 - 4.6, 0.3, HW / 4 + 2.6, HD / 2 - 0.4)
   // stone path from the torii to the hall
   push(at(new BoxGeometry(1.8, 0.12, 9), 2, G + 0.06, 2.5), 0.5, 1)
 
@@ -290,7 +326,12 @@ function shrine(push, lanterns) {
   push(at(new BoxGeometry(6.4, 2.6, 4.6), hx, G + 1.9, hz), 0.5, 1)
   for (const px of [-3.6, -1.2, 1.2, 3.6]) for (const pz of [-2.8, 2.8]) push(at(new CylinderGeometry(0.18, 0.18, 2.9, 8), hx + px, G + 2.05, hz + pz), 0.5, 7)
   push(at(new BoxGeometry(7.6, 0.32, 5.9), hx, G + 3.5, hz), 0.5, 7)
-  push(at(new BoxGeometry(1.6, 1.8, 0.1), hx, G + 1.6, hz + 2.33), 0.5, 2) // doorway
+  lanterns.push(at(new BoxGeometry(1.6, 1.8, 0.1), hx, G + 1.6, hz + 2.33)) // the open doorway, lit inside
+  // paper lanterns hanging under the front eave
+  for (const sx of [-2.4, 2.4]) {
+    lanterns.push(at(new CylinderGeometry(0.28, 0.28, 0.6, 10), hx + sx, G + 2.95, hz + 3.0))
+    push(at(new BoxGeometry(0.04, 0.5, 0.04), hx + sx, G + 3.5, hz + 3.0), 0.5, 2)
+  }
   push(at(new BoxGeometry(10.6, 0.22, 8.4), hx, G + 3.77, hz), 0.5, 8)
   push(hipRoof(10.4, 0.9, 8.2, 0.62, X + hx, G + 3.88, Z + hz), 0.5, 8)
   push(hipRoof(6.4, 1.7, 5.0, 0.0, X + hx, G + 4.78, Z + hz), 0.5, 8)
