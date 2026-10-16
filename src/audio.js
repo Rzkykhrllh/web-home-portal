@@ -41,8 +41,8 @@ function noiseBuffer(seconds, kind = 'white') {
       last = (last + 0.02 * white) / 1.02
       d[i] = last * 3.5
     } else if (kind === 'crackle') {
-      // mostly silence with sparse clicks, like dust on a record
-      d[i] = Math.random() < 0.0009 ? white * (0.4 + Math.random() * 0.6) : white * 0.006
+      // dust on a record: rare, soft ticks (no constant hiss under them)
+      d[i] = Math.random() < 0.00025 ? white * (0.25 + Math.random() * 0.35) : 0
     } else d[i] = white
   }
   return buffer
@@ -127,7 +127,8 @@ function buildMusic() {
   comp.threshold.value = -20
   comp.ratio.value = 3
   music.connect(tone).connect(comp).connect(master)
-  loopNoise(noiseBuffer(5, 'crackle'), [filter('highpass', 900)], music, 0.5)
+  // kept faint and rounded off at the top so it reads as vinyl, not a bad speaker
+  loopNoise(noiseBuffer(5, 'crackle'), [filter('highpass', 1200), filter('lowpass', 5000)], music, 0.12)
   // tape wobble: one slow LFO feeding every oscillator's detune
   wobble = ctx.createGain()
   wobble.gain.value = 9 // cents
