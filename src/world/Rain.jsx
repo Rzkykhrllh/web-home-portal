@@ -7,7 +7,7 @@ import { player } from '../store.js'
 import { rng } from './canvasTexture.js'
 import { atmos } from './Atmosphere.jsx'
 
-// Light rain: thin lavender streaks falling at a slant in a box that follows
+// Light rain: thin pale-blue streaks falling at a slant in a box that follows
 // the cat, so the camera always looks through it. One draw call.
 const BOX = { x: 16, y: 14, z: 14 }
 const FALL = 13 // m/s
@@ -35,7 +35,9 @@ export default function Rain() {
     const pos = geometry.attributes.position.array
     const cx = player.pos.x
     const cz = player.pos.z - 3
-    const wrap = (v, c, half) => ((((v + c + half) % (half * 2)) + half * 2) % (half * 2)) - half + c
+    // Drops stay put in the world; only the ones that drift out of the box
+    // round the cat come back in on the far side (so the rain doesn't follow you)
+    const wrap = (v, c, half) => c - half + ((((v - c + half) % (half * 2)) + half * 2) % (half * 2))
     for (let i = 0; i < drops.length; i++) {
       const d = drops[i]
       const step = FALL * d[3] * dt * speed
@@ -60,7 +62,7 @@ export default function Rain() {
 
   return (
     <lineSegments ref={lines} geometry={geometry} frustumCulled={false}>
-      <lineBasicMaterial color="#cdbfff" transparent opacity={0.32} depthWrite={false} />
+      <lineBasicMaterial color="#c4d6ff" transparent opacity={0.32} depthWrite={false} />
     </lineSegments>
   )
 }

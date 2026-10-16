@@ -11,14 +11,14 @@ Walk through one (or press **E**, or use the sign's button) and the cat spins
 into it, the screen washes over in the portal's colour, and the browser goes
 to that site.
 
-Illustrated-skyline palette: an indigo-to-magenta sky with stars and a
-crescent moon, a city in layers that fade to violet with distance (cyan and
-orange windows, glass facades, antenna spires, blinking beacons, and a
+Blue-hour palette: a cobalt sky fading to a peach glow on the horizon, stars
+and a crescent moon, a city in layers that fade to blue with distance (warm
+yellow and orange windows, glass facades, antenna spires, blinking beacons, and a
 red-and-white lattice tower beside the moon, floodlit at night), a tiled
 balcony with a railing, wet tiles catching the neon, and light rain. The HUD sits in the same night: the name is set straight on the sky with a
-soft glow, the two portal links are thin glass tags edged in each portal's
+soft blue glow, the two portal links are thin glass tags edged in each portal's
 neon, sound is a lofi-stream style "now playing" corner, and the portal card
-is violet glass with a neon edge.
+is dark blue glass with a neon edge.
 
 Rendered with three.js `WebGPURenderer` through React Three Fiber. Browsers
 without WebGPU fall back to its WebGL 2 backend automatically; every custom

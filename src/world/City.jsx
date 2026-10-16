@@ -27,12 +27,12 @@ export const cityMaterial = (() => {
   const r = hash(id.x.mul(17.1).add(id.y.mul(311.7)))
   const chance = mix(0.04, 0.6, step(0.45, floorLit)).add(step(0.8, floorLit).mul(0.15))
   const lit = step(r, chance).mul(pane).mul(wall)
-  // mostly cool cyan and blue-white, some warm orange, as in an illustrated skyline
+  // mostly warm yellow and orange against the blue, with some cool white offices
   const k = hash(id.x.add(id.y.mul(7.3)).add(3.1))
-  const tint = select(k.lessThan(0.5), color('#6fe3ff'), select(k.lessThan(0.75), color('#bcd3ff'), color('#ffa860')))
+  const tint = select(k.lessThan(0.45), color('#ffd27a'), select(k.lessThan(0.72), color('#ffa860'), color('#d8e6ff')))
   const level = hash(id.x.mul(5.3).add(id.y.mul(2.9))).mul(0.6).add(0.4)
   // some facades are lit glass: vertical cyan stripes over the whole wall
-  const glassy = step(0.86, hash(block.mul(3.7).add(floor(positionWorld.y.div(60)))))
+  const glassy = step(0.9, hash(block.mul(3.7).add(floor(positionWorld.y.div(60)))))
   const stripe = step(fract(along.mul(0.5)), 0.12).mul(glassy).mul(wall).mul(0.5)
   // Night: deep indigo near, lighter violet far (colours follow the hour, see Atmosphere)
   const dist = positionWorld.xz.length()

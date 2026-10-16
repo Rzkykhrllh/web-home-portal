@@ -45,7 +45,9 @@ export default function Snow() {
     const speed = reducedMotion ? 0.4 : 1
     const cx = player.pos.x
     const cz = player.pos.z - 3
-    const wrap = (v, c, half) => ((((v + c + half) % (half * 2)) + half * 2) % (half * 2)) - half + c
+    // Drops stay put in the world; only the ones that drift out of the box
+    // round the cat come back in on the far side (so the rain doesn't follow you)
+    const wrap = (v, c, half) => c - half + ((((v - c + half) % (half * 2)) + half * 2) % (half * 2))
     dummy.quaternion.copy(state.camera.quaternion)
     for (let i = 0; i < flakes.length; i++) {
       const f = flakes[i]

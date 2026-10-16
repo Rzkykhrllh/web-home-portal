@@ -22,14 +22,14 @@ function tileTexture() {
   const w = W * PX
   const h = D * PX
   return canvasTexture(w, h, (ctx) => {
-    ctx.fillStyle = '#231d3f'
+    ctx.fillStyle = '#1d2438'
     ctx.fillRect(0, 0, w, h)
     const r = rng(11)
     const T = PX // 1 m tiles
     for (let y = 0; y < h; y += T) {
       for (let x = 0; x < w; x += T) {
         const k = r()
-        ctx.fillStyle = k < 0.08 ? '#3e3566' : k < 0.2 ? '#352d5a' : '#393160'
+        ctx.fillStyle = k < 0.08 ? '#3c4a6a' : k < 0.2 ? '#334060' : '#384566'
         ctx.fillRect(x + 2, y + 2, T - 4, T - 4)
       }
     }
@@ -114,13 +114,13 @@ function Parapet() {
   return (
     <group>
       <mesh geometry={walls}>
-        <meshStandardMaterial color="#2e2650" roughness={0.85} />
+        <meshStandardMaterial color="#26324e" roughness={0.85} />
       </mesh>
       <mesh geometry={posts}>
-        <meshStandardMaterial color="#4a3f7a" metalness={0.6} roughness={0.4} />
+        <meshStandardMaterial color="#3e4a68" metalness={0.6} roughness={0.4} />
       </mesh>
       <mesh geometry={rails}>
-        <meshStandardMaterial color="#c75a9a" emissive="#c75a9a" emissiveIntensity={0.35} metalness={0.6} roughness={0.35} />
+        <meshStandardMaterial color="#e0a060" emissive="#e0a060" emissiveIntensity={0.3} metalness={0.6} roughness={0.35} />
       </mesh>
     </group>
   )
