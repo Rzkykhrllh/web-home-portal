@@ -5,7 +5,7 @@ Airu's tabby cat (the same rigged model as in [web-3d-project](../web-3d-project
 and [web-3d-island](../web-3d-island)) walks between two portals.
 
 - **開発 Engineering** → `https://dev.byairu.com`: a steel doorway glowing with scrolling code
-- **写真 Photography** → `https://www.instagram.com/frame_by_airu/` for now (swap in the photo site when it's public): a giant lens whose aperture opens as the cat walks up
+- **写真 Photography** → `https://byairu.com`: a giant lens whose aperture opens as the cat walks up
 
 Walk through one (or press **E**, or use the sign's button) and the cat spins
 into it, the screen washes over in the portal's colour, and the browser goes

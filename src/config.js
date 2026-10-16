@@ -17,8 +17,7 @@ export const PORTALS = [
     jp: '写真',
     line: 'P',
     blurb: 'Street and travel, mostly around Tokyo.',
-    // TODO: point at the airu-fotografi site once it has a public URL
-    url: import.meta.env.VITE_PHOTO_URL || 'https://www.instagram.com/frame_by_airu/',
+    url: import.meta.env.VITE_PHOTO_URL || 'https://byairu.com',
     color: '#ffae2e',
     position: [5.4, 0, -4.3],
   },
